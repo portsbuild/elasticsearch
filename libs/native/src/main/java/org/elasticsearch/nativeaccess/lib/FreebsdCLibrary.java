@@ -1,0 +1,23 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ */
+
+package org.elasticsearch.nativeaccess.lib;
+
+import org.elasticsearch.foreign.CaptureSystemError;
+import org.elasticsearch.foreign.Function;
+import org.elasticsearch.foreign.LibrarySpecification;
+import org.elasticsearch.foreign.Platform;
+
+@LibrarySpecification(unavailableOn = { Platform.WINDOWS_X64 })
+public interface FreebsdCLibrary {
+
+    @CaptureSystemError
+    @Function("posix_fallocate")
+    int posix_fallocate(int fd, long offset, long length);
+}
