@@ -1,0 +1,70 @@
+# This workflow will build a package using Gradle and then publish it to GitHub packages when a release is created
+# For more information see: https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#Publishing-using-gradle
+
+name: Gradle Package
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    if: github.repository == 'portsbuild/elasticsearch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # packages: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDKs
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          architecture: x64
+          cache: 'gradle'
+          java-version: |
+            17
+            19
+            20
+            22
+            23
+            21
+
+      # - name: 'Set up latest JDK N from jdk.java.net'
+      #   uses: oracle-actions/setup-java@v1
+      #   with:
+      #     website: jdk.java.net
+      #     release: N # Replace N with GA, EA, 21, 22, 23, ...
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+
+      - name: Build with Gradle
+        run: ./gradlew distribution:archives:freebsd-tar:assemble -D"build.snapshot=false" -D"license.key=x-pack/license-tools/src/test/resources/public.key"
+        env:
+          CI: false
+        # JAVA_HOME_17_X64
+
+      - name: Upload distribution archive
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          files: distribution/archives/freebsd-tar/build/distributions/elasticsearch-*-freebsd-x86_64.tar.gz
+
+      # - name: Upload distribution archive
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: elasticsearch-${{ github.ref_name }}-freebsd-x86_64
+      #    path: distribution/archives/freebsd-tar/build/distributions/elasticsearch-*-freebsd-x86_64.tar.gz
+      #    retention-days: 90
+      #    compression-level: 0
+
+      # The USERNAME and TOKEN need to correspond to the credentials environment variables used in
+      # the publishing section of your build.gradle
+      # - name: Publish to GitHub Packages
+      #   run: ./gradlew publish
+      #   env:
+      #     USERNAME: ${{ github.actor }}
+      #     TOKEN: ${{ secrets.GITHUB_TOKEN }}
