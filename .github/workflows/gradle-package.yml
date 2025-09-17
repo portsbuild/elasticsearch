@@ -42,7 +42,7 @@ jobs:
         uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
 
       - name: Build with Gradle
-        run: ./gradlew distribution:archives:freebsd-tar:assemble -D"build.snapshot=false" -D"license.key=x-pack/license-tools/src/test/resources/public.key"
+        run: ./gradlew distribution:archives:freebsd-tar:assemble -D"build.snapshot=false" -D"license.key=public.key"
         env:
           CI: false
         # JAVA_HOME_17_X64
