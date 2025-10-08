@@ -30,6 +30,7 @@ jobs:
             20
             22
             23
+            25
             21
 
       # - name: 'Set up latest JDK N from jdk.java.net'
