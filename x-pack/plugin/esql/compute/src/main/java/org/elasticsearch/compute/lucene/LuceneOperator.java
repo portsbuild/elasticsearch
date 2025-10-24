@@ -45,9 +45,6 @@ import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.elasticsearch.TransportVersions.ESQL_REPORT_SHARD_PARTITIONING;
-import static org.elasticsearch.TransportVersions.ESQL_REPORT_SHARD_PARTITIONING_8_19;
-
 public abstract class LuceneOperator extends SourceOperator {
     private static final Logger logger = LogManager.getLogger(LuceneOperator.class);
 
@@ -297,6 +294,8 @@ public abstract class LuceneOperator extends SourceOperator {
             Status::new
         );
 
+        private static final TransportVersion ESQL_REPORT_SHARD_PARTITIONING = TransportVersion.fromName("esql_report_shard_partitioning");
+
         private final int processedSlices;
         private final Set<String> processedQueries;
         private final Set<String> processedShards;
@@ -381,7 +380,7 @@ public abstract class LuceneOperator extends SourceOperator {
             sliceMin = in.readVInt();
             sliceMax = in.readVInt();
             current = in.readVInt();
-            if (in.getTransportVersion().onOrAfter(TransportVersions.ESQL_PROFILE_ROWS_PROCESSED)) {
+            if (in.getTransportVersion().supports(TransportVersions.V_8_18_0)) {
                 rowsEmitted = in.readVLong();
             } else {
                 rowsEmitted = 0;
@@ -407,7 +406,7 @@ public abstract class LuceneOperator extends SourceOperator {
             out.writeVInt(sliceMin);
             out.writeVInt(sliceMax);
             out.writeVInt(current);
-            if (out.getTransportVersion().onOrAfter(TransportVersions.ESQL_PROFILE_ROWS_PROCESSED)) {
+            if (out.getTransportVersion().supports(TransportVersions.V_8_18_0)) {
                 out.writeVLong(rowsEmitted);
             }
             if (serializeShardPartitioning(out.getTransportVersion())) {
@@ -416,7 +415,7 @@ public abstract class LuceneOperator extends SourceOperator {
         }
 
         private static boolean serializeShardPartitioning(TransportVersion version) {
-            return version.onOrAfter(ESQL_REPORT_SHARD_PARTITIONING) || version.isPatchFrom(ESQL_REPORT_SHARD_PARTITIONING_8_19);
+            return version.supports(ESQL_REPORT_SHARD_PARTITIONING);
         }
 
         @Override
