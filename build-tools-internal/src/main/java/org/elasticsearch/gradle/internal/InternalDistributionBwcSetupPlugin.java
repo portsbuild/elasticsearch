@@ -396,7 +396,7 @@ public class InternalDistributionBwcSetupPlugin implements Plugin<Project> {
         List<String> projects = new ArrayList<>();
         if (bwcVersion.onOrAfter("7.13.0")) {
             projects.addAll(asList("deb", "rpm"));
-            projects.addAll(asList("windows-zip", "darwin-tar", "linux-tar"));
+            projects.addAll(asList("windows-zip", "darwin-tar", "linux-tar", "freebsd-tar"));
             projects.addAll(asList("darwin-aarch64-tar", "linux-aarch64-tar"));
         } else {
             projects.addAll(asList("deb", "rpm", "oss-deb", "oss-rpm"));
