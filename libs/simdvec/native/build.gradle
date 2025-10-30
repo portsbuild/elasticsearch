@@ -10,6 +10,7 @@ apply plugin: 'c'
 apply plugin: 'cpp'
 
 var os = org.gradle.internal.os.OperatingSystem.current()
+var isFreeBSD = System.getProperty("os.name", "").startsWith("FreeBSD")
 
 // To update this library run publish_vec_binaries.sh  ( or ./gradlew buildSharedLibrary )
 // Or
@@ -51,9 +52,9 @@ model {
         cCompiler.withArguments { args -> args.addAll(["-O3", "-std=c99", "-march=armv8-a"]) }
       }
       target("amd64") {
-        cCompiler.executable = "/usr/bin/gcc"
+        if (!isFreeBSD) cCompiler.executable = "/usr/bin/gcc"
         cCompiler.withArguments { args -> args.addAll(["-O3", "-std=c99", "-march=core-avx2", "-Wno-incompatible-pointer-types"]) }
-        cppCompiler.executable = "/usr/bin/g++"
+        if (!isFreeBSD) cppCompiler.executable = "/usr/bin/g++"
         cppCompiler.withArguments { args -> args.addAll(["-O3", "-march=core-avx2"]) }
       }
     }
