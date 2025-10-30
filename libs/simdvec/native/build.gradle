@@ -48,7 +48,7 @@ model {
   toolChains {
     gcc(Gcc) {
       target("aarch64") {
-        cCompiler.executable = "/usr/bin/gcc"
+        if (!isFreeBSD) cCompiler.executable = "/usr/bin/gcc"
         cCompiler.withArguments { args -> args.addAll(["-O3", "-std=c99", "-march=armv8-a"]) }
       }
       target("amd64") {
