@@ -1,0 +1,109 @@
+name: FreeBSD Tests
+on:
+  push:
+    branches: [ "freebsd-tests" ]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/*.yml'
+  pull_request:
+    branches: [ "freebsd-tests" ]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/*.yml'
+  workflow_dispatch:
+
+jobs:
+  test-freebsd:
+    if: github.repository == 'portsbuild/elasticsearch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CI: false # Disabling CI for now
+      RUNTIME_JAVA_HOME: /usr/local/openjdk25
+      JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
+      LOCAL_VEC_BINARY_OS: freebsd
+      COMMON_BUILD_PARAMS: '-D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -D"org.elasticsearch.nativeaccess.enableVectorLibrary=true"'
+      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Start VM
+        id: test-es-freebsd
+        uses: portsbuild/freebsd-vm@dev
+        with:
+          release: "14.3"
+          # arch: aarch64
+          mem: 11264
+          cpu: 4
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS COMMON_BUILD_PARAMS COMMON_TEST_PARAMS'
+          usesh: true
+          copyback: false
+          prepare: |
+            freebsd-version
+            pwd
+            sysctl hw.model
+            sysctl hw.ncpu
+            sysctl hw.physmem
+            sysctl hw.usermem
+
+      - name: Install dependencies
+        shell: freebsd {0}
+        run: |
+          mkdir -p /usr/local/etc/pkg/repos
+          printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
+          pkg update -f -q
+          pkg install -y bash curl openjdk17 openjdk19 openjdk20 openjdk21 openjdk22 openjdk23 openjdk25 protobuf gcc13
+
+      - name: Mount proc
+        shell: freebsd {0}
+        run: |
+          mount -t procfs proc /proc
+          java -version
+
+      - name: Add dedicated action user
+        shell: freebsd {0}
+        run: |
+          pw user add -n action -m
+          su action -c 'mkdir ~/.gradle'
+          su action -c 'printf "org.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25\n" > ~/.gradle/gradle.properties'
+          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\nexport LOCAL_VEC_BINARY_OS=freebsd\nexport CI=false\n" >> ~/.shrc'
+          cd $GITHUB_WORKSPACE
+          chown -R action:wheel .
+
+      - name: Compile classes
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
+
+      - name: Build vector library
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew buildSharedLibraryAndCopy copyLibzstd'
+
+      - name: Run ProcessLimits tests
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew buildSharedLibraryAndCopy copyLibzstd ":libs:native:test" --tests "org.elasticsearch.nativeaccess.ProcessLimitsTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
+          ls -alh libs/native/libraries/build/platform/freebsd-x64/
+
+      - name: Run Preallocate tests
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.PreallocateTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
+
+      - name: Run remaining native access tests
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
+
+      - name: Run all tests
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          su action -c './gradlew test "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
