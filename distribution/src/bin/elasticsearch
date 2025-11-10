@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 CLI_NAME=server
 CLI_LIBS=lib/tools/server-cli
