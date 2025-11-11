@@ -6,19 +6,9 @@
 
 This project is an unofficial port of Elasticsearch for FreeBSD systems. It was created to continue supporting Elasticsearch on FreeBSD after Elastic [introduced NativeAccess](https://github.com/elastic/elasticsearch/pull/108970) in 8.16, making it difficult to run ES without additional source code modifications.
 
-The following table lists the actively maintained releases on this repository. These versions are tested & supported on FreeBSD 14.3, and presumed to work on 13.5 and 15.x.
-
-| ES    | Branch                                                                | Bugzilla                                                         |
-|-------|-----------------------------------------------------------------------|------------------------------------------------------------------|
-| 8.19* | [Link](https://github.com/portsbuild/elasticsearch/tree/freebsd-8.19) | [Link](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=288653) |
-| 9.1   | [Link](https://github.com/portsbuild/elasticsearch/tree/freebsd-9.1)  | [Link](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=290096) |
-| 9.2   | [Link](https://github.com/portsbuild/elasticsearch/tree/freebsd-9.2)  | TBA                                                              |
-
-\* Current recommendation for production use.
-
 ## Installation
 
-The recommended way to install Elasticsearch is by using the port makefile. Since this project's port is not included in the official FreeBSD package repositories or ports index, one can create a local repository and install from there. Currently, a new port makefile is posted on the [FreeBSD Bugzilla entry](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=288653) page as new Elasticsearch versions are released.
+The recommended way to install Elasticsearch is by using the port makefile. Since this project's port is not included in the official FreeBSD package repositories or ports index, one can create a local repository and install from there. Currently, a new port makefile is posted on the [FreeBSD Bugzilla entry](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=290096) page as new Elasticsearch versions are released.
 
 > [!WARNING]
 > If you are upgrading an existing Elasticsearch instance to version 9.x, you **MUST** upgrade to 8.19 first!
@@ -26,14 +16,14 @@ The recommended way to install Elasticsearch is by using the port makefile. Sinc
 
 ### New installations
 
-If you are upgrading from a previous version (e.g. 8.11.3) then skip to the [upgrading](#upgrading-existing-installations) section below.
+If you are upgrading from a previous version (e.g. 8.11.3) then skip to the [upgrading](#upgrading-existing-installations) section below. Replace the `XXXXXX` attachment ID in the fetch URL below with the latest version available on the [Bugzilla page](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=290096).
 
 ```shell
 mkdir /usr/local/ports
 cd /usr/local/ports
-fetch "https://bugs.freebsd.org/bugzilla/attachment.cgi?id=264852" -o /usr/local/ports/elasticsearch-8.19.6.tar.gz
-tar xvf elasticsearch-8.19.6.tar.gz
-cd textproc/elasticsearch8
+fetch "https://bugs.freebsd.org/bugzilla/attachment.cgi?id=XXXXXX" -o /usr/local/ports/elasticsearch-9.1.tar.gz
+tar xvf elasticsearch-9.1.tar.gz
+cd textproc/elasticsearch91
 make install clean
 sysrc elasticsearch_enable="YES"
 service elasticsearch start
@@ -47,12 +37,14 @@ This method can upgrade older versions of Elasticsearch, such as the outdated on
 > If you are upgrading an existing Elasticsearch instance to version 9.x, you **MUST** upgrade to 8.19 first!
 > Read the [official documentation](https://www.elastic.co/docs/deploy-manage/upgrade#upgrade-paths) for additional info.
 
+Replace the `XXXXXX` attachment ID in the fetch URL below with the latest version available on the [Bugzilla page](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=290096).
+
 ```shell
 mkdir /usr/local/ports
 cd /usr/local/ports
-fetch "https://bugs.freebsd.org/bugzilla/attachment.cgi?id=264852" -o /usr/local/ports/elasticsearch-8.19.6.tar.gz
-tar xvf elasticsearch-8.19.6.tar.gz
-cd textproc/elasticsearch8
+fetch "https://bugs.freebsd.org/bugzilla/attachment.cgi?id=XXXXXX" -o /usr/local/ports/elasticsearch-9.1.tar.gz
+tar xvf elasticsearch-9.1.tar.gz
+cd textproc/elasticsearch91
 make reinstall clean
 ```
 
@@ -90,11 +82,11 @@ Install the necessary JDKs and other build dependencies to compile and run Elast
 pkg install bash curl protobuf gcc13 java/openjdk17 java/openjdk19 java/openjdk20 java/openjdk21 java/openjdk22 java/openjdk23 java/openjdk25
 ```
 
-Clone this repository by either checking out a release branch such as `freebsd-8.19` or a specific tag, e.g. `8.19.6`:
+Clone this repository by either checking out a release branch such as `freebsd-9.1` or a specific tag, e.g. `9.1.7`:
 
 ```shell
-git clone --depth 1 --branch v8.19.6 https://github.com/portsbuild/elasticsearch elasticsearch-8.19.6
-cd elasticsearch-8.19.6
+git clone --depth 1 --branch v9.1.7 https://github.com/portsbuild/elasticsearch elasticsearch-9.1.7
+cd elasticsearch-9.1.7
 ```
 
 Set the default JDK to 25 and begin the build:
@@ -104,20 +96,10 @@ export RUNTIME_JAVA_HOME=/usr/local/openjdk25
 ./gradlew distribution:archives:freebsd-tar:assemble -D"build.snapshot=false" -D"license.key=public.key" -Porg.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25
 ```
 
-Copy the freshly built archive to `/usr/ports/distfiles`:
+A distribution archive will be created in the following folder:
 
 ```shell
-mv distribution/archives/freebsd-tar/build/distributions/elasticsearch-8.19.6-freebsd-x86_64.tar.gz /usr/ports/distfiles/
-```
-
-Create a `/usr/local/ports` directory and extract the port patch/makefile there:
-
-```shell
-mkdir -p /usr/local/ports
-cd /usr/local/ports/textproc/elasticsearch8
-fetch "https://bugs.freebsd.org/bugzilla/attachment.cgi?id=264852" -o /usr/local/ports/elasticsearch-8.19.6.tar.gz
-make makesum
-make install clean
+distribution/archives/freebsd-tar/build/distributions/elasticsearch-9.1.7-freebsd-x86_64.tar.gz
 ```
 
 ### Building the vector library
