@@ -58,6 +58,7 @@ public abstract class GenerativeRestTest extends ESRestTestCase implements Query
         "Unbounded SORT not supported yet",
         "The field names are too complex to process", // field_caps problem
         "must be \\[any type except counter types\\]", // TODO refine the generation of count()
+        "INLINE STATS cannot be used after an explicit or implicit LIMIT command",
 
         // Awaiting fixes for query failure
         "Unknown column \\[<all-fields-projected>\\]", // https://github.com/elastic/elasticsearch/issues/121741,
@@ -65,7 +66,6 @@ public abstract class GenerativeRestTest extends ESRestTestCase implements Query
         "Plan \\[ProjectExec\\[\\[<no-fields>.* optimized incorrectly due to missing references",
         "The incoming YAML document exceeds the limit:", // still to investigate, but it seems to be specific to the test framework
         "Data too large", // Circuit breaker exceptions eg. https://github.com/elastic/elasticsearch/issues/130072
-        "optimized incorrectly due to missing references", // https://github.com/elastic/elasticsearch/issues/131509
         "long overflow", // https://github.com/elastic/elasticsearch/issues/135759
         "can't build page out of released blocks", // https://github.com/elastic/elasticsearch/issues/135679
 

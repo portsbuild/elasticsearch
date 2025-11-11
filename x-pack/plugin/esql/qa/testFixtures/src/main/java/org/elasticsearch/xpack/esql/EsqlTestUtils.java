@@ -64,12 +64,15 @@ import org.elasticsearch.xpack.esql.analysis.AnalyzerContext;
 import org.elasticsearch.xpack.esql.analysis.AnalyzerSettings;
 import org.elasticsearch.xpack.esql.analysis.EnrichResolution;
 import org.elasticsearch.xpack.esql.analysis.Verifier;
+import org.elasticsearch.xpack.esql.core.expression.Alias;
 import org.elasticsearch.xpack.esql.core.expression.Attribute;
 import org.elasticsearch.xpack.esql.core.expression.Expression;
 import org.elasticsearch.xpack.esql.core.expression.FieldAttribute;
 import org.elasticsearch.xpack.esql.core.expression.FieldAttribute.FieldName;
 import org.elasticsearch.xpack.esql.core.expression.FoldContext;
 import org.elasticsearch.xpack.esql.core.expression.Literal;
+import org.elasticsearch.xpack.esql.core.expression.NameId;
+import org.elasticsearch.xpack.esql.core.expression.NamedExpression;
 import org.elasticsearch.xpack.esql.core.expression.ReferenceAttribute;
 import org.elasticsearch.xpack.esql.core.expression.predicate.regex.RLikePattern;
 import org.elasticsearch.xpack.esql.core.expression.predicate.regex.WildcardPattern;
@@ -77,6 +80,7 @@ import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.esql.core.type.DataType;
 import org.elasticsearch.xpack.esql.core.type.EsField;
 import org.elasticsearch.xpack.esql.core.util.DateUtils;
+import org.elasticsearch.xpack.esql.core.util.Holder;
 import org.elasticsearch.xpack.esql.core.util.StringUtils;
 import org.elasticsearch.xpack.esql.expression.function.EsqlFunctionRegistry;
 import org.elasticsearch.xpack.esql.expression.function.scalar.spatial.StGeohash;
@@ -85,6 +89,7 @@ import org.elasticsearch.xpack.esql.expression.function.scalar.spatial.StGeotile
 import org.elasticsearch.xpack.esql.expression.function.scalar.string.regex.RLike;
 import org.elasticsearch.xpack.esql.expression.function.scalar.string.regex.WildcardLike;
 import org.elasticsearch.xpack.esql.expression.predicate.Range;
+import org.elasticsearch.xpack.esql.expression.predicate.operator.arithmetic.Mul;
 import org.elasticsearch.xpack.esql.expression.predicate.operator.comparison.Equals;
 import org.elasticsearch.xpack.esql.expression.predicate.operator.comparison.GreaterThan;
 import org.elasticsearch.xpack.esql.expression.predicate.operator.comparison.GreaterThanOrEqual;
@@ -99,11 +104,17 @@ import org.elasticsearch.xpack.esql.optimizer.LogicalOptimizerContext;
 import org.elasticsearch.xpack.esql.parser.QueryParam;
 import org.elasticsearch.xpack.esql.plan.logical.Enrich;
 import org.elasticsearch.xpack.esql.plan.logical.EsRelation;
+import org.elasticsearch.xpack.esql.plan.logical.Explain;
 import org.elasticsearch.xpack.esql.plan.logical.Limit;
 import org.elasticsearch.xpack.esql.plan.logical.LogicalPlan;
+import org.elasticsearch.xpack.esql.plan.logical.join.JoinConfig;
+import org.elasticsearch.xpack.esql.plan.logical.join.JoinTypes;
+import org.elasticsearch.xpack.esql.plan.logical.join.LookupJoin;
 import org.elasticsearch.xpack.esql.plan.logical.local.EmptyLocalSupplier;
 import org.elasticsearch.xpack.esql.plan.logical.local.LocalRelation;
 import org.elasticsearch.xpack.esql.plan.logical.local.LocalSupplier;
+import org.elasticsearch.xpack.esql.plan.physical.FragmentExec;
+import org.elasticsearch.xpack.esql.plan.physical.PhysicalPlan;
 import org.elasticsearch.xpack.esql.planner.PlannerSettings;
 import org.elasticsearch.xpack.esql.planner.PlannerUtils;
 import org.elasticsearch.xpack.esql.plugin.QueryPragmas;
@@ -112,6 +123,10 @@ import org.elasticsearch.xpack.esql.session.Configuration;
 import org.elasticsearch.xpack.esql.stats.SearchStats;
 import org.elasticsearch.xpack.esql.telemetry.Metrics;
 import org.elasticsearch.xpack.versionfield.Version;
+import org.hamcrest.Matcher;
+import org.hamcrest.collection.IsIterableContainingInAnyOrder;
+import org.hamcrest.collection.IsIterableContainingInOrder;
+import org.hamcrest.core.IsEqual;
 import org.junit.Assert;
 
 import java.io.BufferedReader;
@@ -143,6 +158,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.jar.JarInputStream;
 import java.util.zip.ZipEntry;
 
@@ -217,6 +233,27 @@ public final class EsqlTestUtils {
         return new GreaterThanOrEqual(EMPTY, left, right, ESTestCase.randomZone());
     }
 
+    public static FieldAttribute findFieldAttribute(LogicalPlan plan, String name) {
+        return findFieldAttribute(plan, name, (unused) -> true);
+    }
+
+    public static FieldAttribute findFieldAttribute(LogicalPlan plan, String name, Predicate<EsRelation> inThisRelation) {
+        Holder<FieldAttribute> result = new Holder<>();
+        plan.forEachDown(EsRelation.class, relation -> {
+            if (inThisRelation.test(relation) == false) {
+                return;
+            }
+            for (Attribute attr : relation.output()) {
+                if (attr.name().equals(name)) {
+                    assertNull("Multiple matching field attributes found", result.get());
+                    result.set((FieldAttribute) attr);
+                    return;
+                }
+            }
+        });
+        return result.get();
+    }
+
     public static FieldAttribute getFieldAttribute() {
         return getFieldAttribute("a");
     }
@@ -257,6 +294,14 @@ public final class EsqlTestUtils {
 
     public static ReferenceAttribute referenceAttribute(String name, DataType type) {
         return new ReferenceAttribute(EMPTY, name, type);
+    }
+
+    public static Alias alias(String name, Expression child) {
+        return new Alias(EMPTY, name, child);
+    }
+
+    public static Mul mul(Expression left, Expression right) {
+        return new Mul(EMPTY, left, right);
     }
 
     public static Range rangeOf(Expression value, Expression lower, boolean includeLower, Expression upper, boolean includeUpper) {
@@ -578,6 +623,20 @@ public final class EsqlTestUtils {
         }
         if (duplicated != null) {
             assertEquals(limit.duplicated(), duplicated);
+        }
+        return limit;
+    }
+
+    public static Limit asLimit(Object node, Integer limitLiteral, Boolean duplicated, Boolean local) {
+        Limit limit = as(node, Limit.class);
+        if (limitLiteral != null) {
+            assertEquals(as(limit.limit(), Literal.class).value(), limitLiteral);
+        }
+        if (duplicated != null) {
+            assertEquals(limit.duplicated(), duplicated);
+        }
+        if (local != null) {
+            assertEquals(limit.local(), local);
         }
         return limit;
     }
@@ -1063,5 +1122,116 @@ public final class EsqlTestUtils {
         } else {
             return e;
         }
+    }
+
+    public static void assertEqualsIgnoringIds(Object expected, Object actual) {
+        assertEqualsIgnoringIds("", expected, actual);
+    }
+
+    public static void assertEqualsIgnoringIds(String reason, Object expected, Object actual) {
+        assertThat(reason, actual, equalToIgnoringIds(expected));
+    }
+
+    /**
+     * Returns a matcher that matches if the examined object is logically equal to the specified
+     * operand, ignoring the {@link NameId}s of any {@link NamedExpression}s (e.g. {@link Alias} and {@link Attribute}).
+     */
+    public static <T> org.hamcrest.Matcher<T> equalToIgnoringIds(T operand) {
+        return new IsEqualIgnoringIds<T>(operand);
+    }
+
+    @SafeVarargs
+    public static <T> org.hamcrest.Matcher<java.lang.Iterable<? extends T>> containsIgnoringIds(T... items) {
+        List<Matcher<? super T>> matchers = new ArrayList<>();
+        for (T item : items) {
+            matchers.add(equalToIgnoringIds(item));
+        }
+
+        return new IsIterableContainingInOrder<>(matchers);
+    }
+
+    @SafeVarargs
+    public static <T> org.hamcrest.Matcher<java.lang.Iterable<? extends T>> containsInAnyOrderIgnoringIds(T... items) {
+        List<Matcher<? super T>> matchers = new ArrayList<>();
+        for (T item : items) {
+            matchers.add(equalToIgnoringIds(item));
+        }
+
+        return new IsIterableContainingInAnyOrder<>(matchers);
+    }
+
+    private static class IsEqualIgnoringIds<T> extends IsEqual<T> {
+        @SuppressWarnings("unchecked")
+        IsEqualIgnoringIds(T operand) {
+            super((T) ignoreIds(operand));
+        }
+
+        @Override
+        public boolean matches(Object actualValue) {
+            return super.matches(ignoreIds(actualValue));
+        }
+    }
+
+    public static Object ignoreIds(Object node) {
+        return switch (node) {
+            case Expression expression -> ignoreIdsInExpression(expression);
+            case LogicalPlan plan -> ignoreIdsInLogicalPlan(plan);
+            case PhysicalPlan pplan -> ignoreIdsInPhysicalPlan(pplan);
+            case List<?> list -> list.stream().map(EsqlTestUtils::ignoreIds).toList();
+            case null, default -> node;
+        };
+    }
+
+    private static final NameId DUMMY_ID = new NameId();
+
+    private static Expression ignoreIdsInExpression(Expression expression) {
+        return expression.transformDown(
+            NamedExpression.class,
+            ne -> ne instanceof Alias alias ? alias.withId(DUMMY_ID) : ne instanceof Attribute attr ? attr.withId(DUMMY_ID) : ne
+        );
+    }
+
+    private static LogicalPlan ignoreIdsInLogicalPlan(LogicalPlan plan) {
+        if (plan instanceof Explain explain) {
+            return new Explain(explain.source(), ignoreIdsInLogicalPlan(explain.query()));
+        }
+
+        // For LookupJoin with the UsingJoinType, the join keys are not part of the plan expressions/node info,
+        // so transformExpressionsDown won't reach them. We need to handle them specifically.
+        plan = plan.transformDown(LookupJoin.class, lookupJoin -> {
+            JoinConfig config = lookupJoin.config();
+            if (config.type() instanceof JoinTypes.UsingJoinType usingJoinType) {
+                List<Attribute> newJoinKeys = usingJoinType.columns()
+                    .stream()
+                    .map(attr -> (Attribute) ignoreIdsInExpression(attr))
+                    .toList();
+                JoinTypes.UsingJoinType newJoinType = new JoinTypes.UsingJoinType(usingJoinType.coreJoin(), newJoinKeys);
+                JoinConfig newJoinConfig = new JoinConfig(
+                    newJoinType,
+                    config.leftFields(),
+                    config.rightFields(),
+                    config.joinOnConditions()
+                );
+                return new LookupJoin(lookupJoin.source(), lookupJoin.left(), lookupJoin.right(), newJoinConfig, lookupJoin.isRemote());
+            }
+            return lookupJoin;
+        });
+
+        return plan.transformExpressionsDown(
+            NamedExpression.class,
+            ne -> ne instanceof Alias alias ? alias.withId(DUMMY_ID) : ne instanceof Attribute attr ? attr.withId(DUMMY_ID) : ne
+        );
+    }
+
+    private static PhysicalPlan ignoreIdsInPhysicalPlan(PhysicalPlan plan) {
+        PhysicalPlan ignoredInPhysicalNodes = plan.transformExpressionsDown(
+            NamedExpression.class,
+            ne -> ne instanceof Alias alias ? alias.withId(DUMMY_ID) : ne instanceof Attribute attr ? attr.withId(DUMMY_ID) : ne
+        );
+        return ignoredInPhysicalNodes.transformDown(FragmentExec.class, fragmentExec -> {
+            LogicalPlan fragment = fragmentExec.fragment();
+            LogicalPlan ignoredInFragment = ignoreIdsInLogicalPlan(fragment);
+            return fragmentExec.withFragment(ignoredInFragment);
+        });
     }
 }
