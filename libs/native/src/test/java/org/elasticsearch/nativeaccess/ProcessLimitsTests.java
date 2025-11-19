@@ -72,7 +72,7 @@ public class ProcessLimitsTests extends ESTestCase {
                 }
             }
             fail("should have read max file size from /proc/self/limits");
-        } else if (Constants.MAC_OS_X) {
+        } else if (Constants.MAC_OS_X || Constants.FREE_BSD) {
             assertThat(nativeAccess.getProcessLimits().maxFileSize(), greaterThanOrEqualTo(0L));
         } else {
             assertThat(nativeAccess.getProcessLimits().maxFileSize(), equalTo(ProcessLimits.UNKNOWN));
