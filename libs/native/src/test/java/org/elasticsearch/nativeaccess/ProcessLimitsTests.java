@@ -53,7 +53,7 @@ public class ProcessLimitsTests extends ESTestCase {
                 }
             }
             fail("should have read max size virtual memory from /proc/self/limits");
-        } else if (Constants.MAC_OS_X) {
+        } else if (Constants.MAC_OS_X || Constants.FREE_BSD) {
             assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), greaterThanOrEqualTo(0L));
         } else {
             assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), equalTo(ProcessLimits.UNKNOWN));
