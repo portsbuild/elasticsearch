@@ -93,6 +93,7 @@ Set the default JDK to 25 and begin the build:
 
 ```shell
 export RUNTIME_JAVA_HOME=/usr/local/openjdk25
+export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25
 ./gradlew distribution:archives:freebsd-tar:assemble -D"build.snapshot=false" -D"license.key=public.key" -Porg.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25
 ```
 
@@ -135,6 +136,7 @@ To run the full suite of tests, switch over to the `freebsd-tests` branch and ty
 
 ```shell
 export RUNTIME_JAVA_HOME=/usr/local/openjdk25
+export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25
 ./gradlew test -D"tests.haltonfailure=false" -D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -Porg.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25
 ```
 
@@ -146,6 +148,7 @@ mkdir -p libs/native/libraries/build/platform/freebsd-x64
 cp libs/vec/shared/amd64/libvec.so libs/native/libraries/build/platform/freebsd-x64/
 cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/
 export RUNTIME_JAVA_HOME=/usr/local/openjdk25
+export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25
 ./gradlew -p benchmarks run --args 'Int7uScorerBenchmark' -Porg.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25 -D"--enable-native-access=ALL-UNNAMED"
 ```
 
