@@ -108,14 +108,14 @@ distribution/archives/freebsd-tar/build/distributions/elasticsearch-9.1.7-freebs
 Compiling the vector library is simple. From the root of the repository:
 
 ```shell
-cd libs/simdvec/native/src/vec
-clang -shared -fpic -o libvec.so -I headers/ c/amd64/vec.c -O3 -march=core-avx2 -Wno-incompatible-pointer-types
+export LOCAL_VEC_BINARY_OS=freebsd
+./gradlew buildSharedLibraryAndCopy
 ```
 
 Next, copy `libvec.so` to `/usr/local/lib`:
 
 ```shell
-cp libvec.so /usr/local/lib/
+cp libs/native/libraries/build/platform/freebsd-x64/libvec.so /usr/local/lib/
 ```
 
 Finally, set `enableVectorLibrary` to true in `jvm.options` and (re)start Elasticsearch:
