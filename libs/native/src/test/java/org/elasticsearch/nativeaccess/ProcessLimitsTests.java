@@ -36,6 +36,17 @@ public class ProcessLimitsTests extends ESTestCase {
                 }
             }
             fail("should have read max processes from /proc/self/limits");
+        } else if (Constants.FREE_BSD) {
+            final List<String> lines = Files.readAllLines(PathUtils.get("/proc/curproc/rlimit"));
+            for (final String line : lines) {
+                if (line != null && line.startsWith("nproc")) {
+                    final String[] fields = line.split("\\s+");
+                    final long limit = "unlimited".equals(fields[2]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[2]);
+                    assertThat(nativeAccess.getProcessLimits().maxThreads(), equalTo(limit));
+                    return;
+                }
+            }
+            fail("should have read max processes from /proc/curproc/rlimit");
         } else {
             assertThat(nativeAccess.getProcessLimits().maxThreads(), equalTo(-1L));
         }
