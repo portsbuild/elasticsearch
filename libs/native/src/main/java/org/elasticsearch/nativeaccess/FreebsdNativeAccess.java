@@ -31,7 +31,7 @@ public class FreebsdNativeAccess extends PosixNativeAccess {
                 1,
                 6,
                 512,
-                144,
+                224,
                 112,
                 120
             )
