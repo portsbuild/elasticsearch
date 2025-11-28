@@ -21,7 +21,7 @@ import static org.elasticsearch.nativeaccess.jdk.JdkPosixCLibrary.errnoState;
 
 public class JdkFreebsdCLibrary implements BsdCLibrary {
 
-    private static final MethodHandle posix_allocate$mh = downcallHandleWithErrno(
+    private static final MethodHandle posix_fallocate$mh = downcallHandleWithErrno(
         "posix_fallocate",
         FunctionDescriptor.of(JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG)
     );
@@ -31,7 +31,7 @@ public class JdkFreebsdCLibrary implements BsdCLibrary {
     @Override
     public int posix_fallocate(int fd, long offset, long length) {
         try {
-            return (int) posix_allocate$mh.invokeExact(errnoState, fd, offset, length);
+            return (int) posix_fallocate$mh.invokeExact(errnoState, fd, offset, length);
         } catch (Throwable t) {
             throw new AssertionError(t);
         }
