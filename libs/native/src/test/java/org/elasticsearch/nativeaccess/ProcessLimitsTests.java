@@ -41,7 +41,7 @@ public class ProcessLimitsTests extends ESTestCase {
             for (final String line : lines) {
                 if (line != null && line.startsWith("nproc")) {
                     final String[] fields = line.split("\\s+");
-                    final long limit = "unlimited".equals(fields[2]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[2]);
+                    final long limit = Long.parseLong(fields[1]);
                     assertThat(nativeAccess.getProcessLimits().maxThreads(), equalTo(limit));
                     return;
                 }
@@ -64,7 +64,18 @@ public class ProcessLimitsTests extends ESTestCase {
                 }
             }
             fail("should have read max size virtual memory from /proc/self/limits");
-        } else if (Constants.MAC_OS_X || Constants.FREE_BSD) {
+        } else if (Constants.FREE_BSD) {
+            final List<String> lines = Files.readAllLines(PathUtils.get("/proc/curproc/rlimit"));
+            for (final String line : lines) {
+                if (line != null && line.startsWith("vmem")) {
+                    final String[] fields = line.split("\\s+");
+                    final long limit = "-1".equals(fields[1]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[1]);
+                    assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), equalTo(limit));
+                    return;
+                }
+            }
+            fail("should have read max virtual memory size from /proc/curproc/rlimit");
+        } else if (Constants.MAC_OS_X) {
             assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), greaterThanOrEqualTo(0L));
         } else {
             assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), equalTo(ProcessLimits.UNKNOWN));
@@ -83,7 +94,18 @@ public class ProcessLimitsTests extends ESTestCase {
                 }
             }
             fail("should have read max file size from /proc/self/limits");
-        } else if (Constants.MAC_OS_X || Constants.FREE_BSD) {
+        } else if (Constants.FREE_BSD) {
+            final List<String> lines = Files.readAllLines(PathUtils.get("/proc/curproc/rlimit"));
+            for (final String line : lines) {
+                if (line != null && line.startsWith("fsize")) {
+                    final String[] fields = line.split("\\s+");
+                    final long limit = "-1".equals(fields[1]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[1]);
+                    assertThat(nativeAccess.getProcessLimits().maxFileSize(), equalTo(limit));
+                    return;
+                }
+            }
+            fail("should have read max file size from /proc/curproc/rlimit");
+        } else if (Constants.MAC_OS_X) {
             assertThat(nativeAccess.getProcessLimits().maxFileSize(), greaterThanOrEqualTo(0L));
         } else {
             assertThat(nativeAccess.getProcessLimits().maxFileSize(), equalTo(ProcessLimits.UNKNOWN));
