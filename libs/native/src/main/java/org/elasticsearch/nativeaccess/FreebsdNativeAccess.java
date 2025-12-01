@@ -24,19 +24,7 @@ public class FreebsdNativeAccess extends PosixNativeAccess {
     // Offset of st_size: 112 bytes
     // Offset of st_blocks: 120 bytes
     FreebsdNativeAccess(NativeLibraryProvider libraryProvider) {
-        super("FreeBSD", libraryProvider,
-            new PosixConstants(
-                -1L,
-                10,
-                1,
-                6,
-                512,
-                224,
-                112,
-                120
-            )
-        );
-
+        super("FreeBSD", libraryProvider, new PosixConstants(-1L, 10, 1, 6, 512, 224, 112, 120));
         this.bsdLibc = libraryProvider.getLibrary(BsdCLibrary.class);
     }
 
@@ -48,7 +36,7 @@ public class FreebsdNativeAccess extends PosixNativeAccess {
 
     @Override
     protected void logMemoryLimitInstructions() {
-        logger.warn("You can allow ElasticSearch to lock large amounts of RAM by setting the following in /etc/sysctl.conf:");
+        logger.warn("You can allow Elasticsearch to lock large amounts of RAM by setting the following in /etc/sysctl.conf:");
         logger.warn("security.bsd.unprivileged_mlock=1\n");
         logger.warn("You can also run the following command to modify the value immediately:");
         logger.warn("sysctl security.bsd.unprivileged_mlock=1\n");
