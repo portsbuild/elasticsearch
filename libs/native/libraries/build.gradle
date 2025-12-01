@@ -111,3 +111,12 @@ def extractLibs = tasks.register('extractLibs', Copy) {
 artifacts {
   nativeLibs extractLibs
 }
+
+if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+  tasks.register('copyLibzstd', Copy) {
+    from('/usr/local/lib') {
+      include 'libzstd.so'
+    }
+    into layout.buildDirectory.dir('platform/freebsd-x64')
+  }
+}
