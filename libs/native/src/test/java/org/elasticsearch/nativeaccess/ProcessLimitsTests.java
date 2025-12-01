@@ -41,7 +41,7 @@ public class ProcessLimitsTests extends ESTestCase {
             for (final String line : lines) {
                 if (line != null && line.startsWith("nproc")) {
                     final String[] fields = line.split("\\s+");
-                    final long limit = Long.parseLong(fields[2]);
+                    final long limit = Long.parseLong(fields[1]);
                     assertThat(nativeAccess.getProcessLimits().maxThreads(), equalTo(limit));
                     return;
                 }
@@ -69,7 +69,7 @@ public class ProcessLimitsTests extends ESTestCase {
             for (final String line : lines) {
                 if (line != null && line.startsWith("vmem")) {
                     final String[] fields = line.split("\\s+");
-                    final long limit = "-1".equals(fields[2]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[2]);
+                    final long limit = "-1".equals(fields[1]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[1]);
                     assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), equalTo(limit));
                     return;
                 }
@@ -99,7 +99,7 @@ public class ProcessLimitsTests extends ESTestCase {
             for (final String line : lines) {
                 if (line != null && line.startsWith("fsize")) {
                     final String[] fields = line.split("\\s+");
-                    final long limit = "-1".equals(fields[2]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[2]);
+                    final long limit = "-1".equals(fields[1]) ? ProcessLimits.UNLIMITED : Long.parseLong(fields[1]);
                     assertThat(nativeAccess.getProcessLimits().maxFileSize(), equalTo(limit));
                     return;
                 }
