@@ -13,7 +13,7 @@ import org.elasticsearch.nativeaccess.lib.BsdCLibrary;
 import org.elasticsearch.nativeaccess.lib.NativeLibraryProvider;
 import org.elasticsearch.nativeaccess.lib.PosixCLibrary;
 
-public class FreebsdNativeAccess extends PosixNativeAccess {
+class FreebsdNativeAccess extends PosixNativeAccess {
 
     private final BsdCLibrary bsdLibc;
     static final int RLIMIT_NPROC = 7;
