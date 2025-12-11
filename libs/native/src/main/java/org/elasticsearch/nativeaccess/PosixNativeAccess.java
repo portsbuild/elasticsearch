@@ -146,7 +146,15 @@ abstract class PosixNativeAccess extends AbstractNativeAccess {
         if (libc.close(fd) != 0) {
             logger.warn("Failed to close file [" + path + "] after getting stats: " + libc.strerror(libc.errno()));
         }
-        return OptionalLong.of(stats.st_blocks() * 512);
+
+        long bytesUsed = stats.st_blocks() * 512;
+
+        // On FreeBSD, st_blocks returns the actual blocks used
+        if (isFreebsdAmd64()) {
+            bytesUsed = stats.st_size();
+        }
+
+        return OptionalLong.of(bytesUsed);
     }
 
     @SuppressForbidden(reason = "Using mkdirs")
