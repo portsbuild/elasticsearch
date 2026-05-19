@@ -25,9 +25,6 @@ tests:
 - class: org.elasticsearch.action.admin.cluster.node.tasks.CancellableTasksIT
   method: testChildrenTasksCancelledOnTimeout
   issue: https://github.com/elastic/elasticsearch/issues/123568
-- class: org.elasticsearch.index.engine.CompletionStatsCacheTests
-  method: testCompletionStatsCache
-  issue: https://github.com/elastic/elasticsearch/issues/126910
 - class: org.elasticsearch.xpack.ccr.action.ShardFollowTaskReplicationTests
   method: testChangeFollowerHistoryUUID
   issue: https://github.com/elastic/elasticsearch/issues/127680
@@ -55,9 +52,6 @@ tests:
 - class: org.elasticsearch.gradle.TestClustersPluginFuncTest
   method: override jdk usage via ES_JAVA_HOME for known jdk os incompatibilities
   issue: https://github.com/elastic/elasticsearch/issues/135413
-- class: org.elasticsearch.xpack.security.authz.microsoft.MicrosoftGraphAuthzPluginIT
-  method: testConcurrentAuthentication
-  issue: https://github.com/elastic/elasticsearch/issues/135777
 - class: org.elasticsearch.xpack.inference.DefaultEndPointsIT
   method: testMultipleInferencesTriggeringDownloadAndDeploy
   issue: https://github.com/elastic/elasticsearch/issues/117208
@@ -288,6 +282,12 @@ tests:
 - class: org.elasticsearch.test.rest.ClientYamlTestSuiteIT
   method: test {yaml=cluster.info/20_info_http/Cluster HTTP Info}
   issue: https://github.com/elastic/elasticsearch/issues/147753
+- class: org.elasticsearch.xpack.esql.qa.mixed.EsqlClientYamlIT
+  method: test {p0=esql/50_index_patterns/_index LIKE with overly complex pattern}
+  issue: https://github.com/elastic/elasticsearch/issues/148134
+- class: org.elasticsearch.xpack.esql.qa.single_node.GenerativeIT
+  method: test
+  issue: https://github.com/elastic/elasticsearch/issues/148339
 
 # Examples:
 #
