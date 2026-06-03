@@ -16,7 +16,6 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.apache.logging.log4j.core.config.plugins.util.PluginManager;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Response;
@@ -69,7 +68,6 @@ public class CsvTestsDataLoader {
     static {
         // Ensure the logging factory is initialized before the static logger field below. When running standalone (via main() or
         // Gradle's loadCsvSpecData task), nothing has initialized the ES logging system before this class is loaded.
-        LogConfigurator.loadLog4jPlugins();
         LogConfigurator.configureESLogging();
     }
 
@@ -181,6 +179,7 @@ public class CsvTestsDataLoader {
         new TestDataset("k8s_unmapped", "mapping-k8s-unmapped.json", "k8s.csv").withSetting("k8s-settings.json"),
         new TestDataset("datenanos-k8s", "k8s-mappings-date_nanos.json", "k8s.csv", "k8s-settings.json"),
         new TestDataset("k8s-downsampled", "k8s-downsampled-mappings.json", "k8s-downsampled.csv", "k8s-downsampled-settings.json"),
+        new TestDataset("stored_source_k8s", "k8s-mappings.json", "k8s.csv").withSetting("k8s-stored-source-settings.json"),
         new TestDataset("distances"),
         new TestDataset("addresses"),
         new TestDataset("addresses").withIndex("addresses_no_continent")
@@ -314,7 +313,6 @@ public class CsvTestsDataLoader {
      */
     public static void main(String[] args) throws IOException {
         // Need to setup the log configuration properly to avoid messages when creating a new RestClient
-        PluginManager.addPackage(LogConfigurator.class.getPackage().getName());
         LogConfigurator.configureESLogging();
         boolean indexes = false;
         boolean policies = false;
