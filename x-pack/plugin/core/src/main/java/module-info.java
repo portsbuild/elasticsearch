@@ -28,6 +28,7 @@ module org.elasticsearch.xcore {
     requires org.slf4j;
     requires com.ibm.icu;
     requires org.elasticsearch.exponentialhistogram;
+    requires org.elasticsearch.logging;
 
     exports org.elasticsearch.index.engine.frozen;
     exports org.elasticsearch.license;
@@ -241,6 +242,7 @@ module org.elasticsearch.xcore {
     exports org.elasticsearch.xpack.core.watcher;
     exports org.elasticsearch.xpack.core.common.chunks;
     exports org.elasticsearch.xpack.core.inference.chunking;
+    exports org.elasticsearch.xpack.core.logging;
 
     provides org.elasticsearch.action.admin.cluster.node.info.ComponentVersionNumber
         with

@@ -22,6 +22,7 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ReleaseVersions;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.cluster.ClusterName;
+import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.common.ReferenceDocs;
 import org.elasticsearch.common.io.stream.InputStreamStreamInput;
 import org.elasticsearch.common.logging.LogConfigurator;
@@ -162,7 +163,7 @@ class Elasticsearch {
     /**
      * Second phase of process initialization.
      *
-     * <p> Phase 2 consists of everything that must occur up to and including security manager initialization.
+     * <p> Phase 2 consists of everything that must occur up to and including entitlement initialization.
      */
     private static void initPhase2(Bootstrap bootstrap) throws IOException {
         // always start by dumping what we know about the process to the log
@@ -191,7 +192,7 @@ class Elasticsearch {
             BootstrapSettings.CTRLHANDLER_SETTING.get(args.nodeSettings())
         );
 
-        // initialize probes before the security manager is installed
+        // initialize probes before entitlements are installed
         initializeProbes();
 
         Runtime.getRuntime().addShutdownHook(new Thread(Elasticsearch::shutdown, "elasticsearch-shutdown"));
@@ -200,31 +201,35 @@ class Elasticsearch {
         final Logger logger = LogManager.getLogger(JarHell.class);
         JarHell.checkJarHell(logger::debug);
 
-        // Log ifconfig output before SecurityManager is installed
+        // Log ifconfig output before entitlements are installed
         IfConfig.logIfNecessary();
 
         ensureInitialized(
             // See https://github.com/elastic/elasticsearch/issues/136268
             TermsEnum.class,
-            // ReleaseVersions does nontrivial static initialization which should always succeed but load it now (before SM) to be sure
+            // ReleaseVersions does nontrivial static initialization which should always succeed but load it now (before entitlements) to be
+            // sure
             ReleaseVersions.class,
-            // ReferenceDocs class does nontrivial static initialization which should always succeed but load it now (before SM) to be sure
+            // ReferenceDocs class does nontrivial static initialization which should always succeed but load it now (before entitlements)
+            // to be sure
             ReferenceDocs.class,
-            // The following classes use MethodHandles.lookup during initialization, load them now (before SM) to be sure they succeed
+            // The following classes use MethodHandles.lookup during initialization, load them now (before entitlements) to be sure they
+            // succeed
             AbstractRefCounted.class,
             SubscribableListener.class,
             RunOnce.class,
             // We eagerly initialize to work around log4j permissions & JDK-8309727
             VectorUtil.class,
             // RequestHandlerRegistry and MethodHandlers classes do nontrivial static initialization which should always succeed but load
-            // it now (before SM) to be sure
+            // it now (before entitlements) to be sure
             RequestHandlerRegistry.class,
             MethodHandlers.class
         );
 
         // load the plugin Java modules and layers now for use in entitlements
-        var modulesBundles = PluginsLoader.loadModulesBundles(nodeEnv.modulesDir());
-        var pluginsBundles = PluginsLoader.loadPluginsBundles(nodeEnv.pluginsDir());
+        boolean isStatelessMode = DiscoveryNode.isStateless(nodeEnv.settings());
+        var modulesBundles = PluginsLoader.loadModulesBundles(nodeEnv.modulesDir(), isStatelessMode);
+        var pluginsBundles = PluginsLoader.loadPluginsBundles(nodeEnv.pluginsDir(), isStatelessMode);
 
         final PluginsLoader pluginsLoader;
 
@@ -232,8 +237,23 @@ class Elasticsearch {
 
         var pluginData = Stream.concat(
             modulesBundles.stream()
-                .map(bundle -> new PolicyUtils.PluginData(bundle.getDir(), bundle.pluginDescriptor().isModular(), false)),
-            pluginsBundles.stream().map(bundle -> new PolicyUtils.PluginData(bundle.getDir(), bundle.pluginDescriptor().isModular(), true))
+                .map(
+                    bundle -> new PolicyUtils.PluginData(
+                        bundle.getDir(),
+                        bundle.pluginDescriptor().getName(),
+                        bundle.pluginDescriptor().isModular(),
+                        false
+                    )
+                ),
+            pluginsBundles.stream()
+                .map(
+                    bundle -> new PolicyUtils.PluginData(
+                        bundle.getDir(),
+                        bundle.pluginDescriptor().getName(),
+                        bundle.pluginDescriptor().isModular(),
+                        true
+                    )
+                )
         ).toList();
 
         var pluginPolicyPatches = collectPluginPolicyPatches(modulesBundles, pluginsBundles, logger);
@@ -395,8 +415,8 @@ class Elasticsearch {
     /**
      * Third phase of initialization.
      *
-     * <p> Phase 3 consists of everything after security manager is initialized. Up until now, the system has been single
-     * threaded. This phase can spawn threads, write to the log, and is subject ot the security manager policy.
+     * <p> Phase 3 consists of everything after entitlements are initialized. Up until now, the system has been single
+     * threaded. This phase can spawn threads, write to the log, and is subject to the entitlement policy.
      *
      * <p> At the end of phase 3 the system is ready to accept requests and the main thread is ready to terminate. This means:
      * <ul>
