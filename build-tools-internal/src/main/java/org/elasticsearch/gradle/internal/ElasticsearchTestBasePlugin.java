@@ -73,9 +73,11 @@ public abstract class ElasticsearchTestBasePlugin implements Plugin<Project> {
 
         // none of this stuff is applicable to the `:buildSrc` project tests
         File heapdumpDir = new File(project.getBuildDir(), "heapdump");
+        final boolean isCi = buildParams.get().getCi();
 
         project.getTasks().withType(Test.class).configureEach(test -> {
             File testOutputDir = new File(test.getReports().getJunitXml().getOutputLocation().getAsFile().get(), "output");
+            test.getReports().getHtml().getRequired().set(isCi == false);
 
             ErrorReportingTestListener listener = new ErrorReportingTestListener(test, testOutputDir);
             test.getExtensions().getExtraProperties().set(DUMP_OUTPUT_ON_FAILURE_PROP_NAME, true);
@@ -130,7 +132,8 @@ public abstract class ElasticsearchTestBasePlugin implements Plugin<Project> {
                 "--add-opens=java.base/java.nio.file=ALL-UNNAMED",
                 "--add-opens=java.base/java.time=ALL-UNNAMED",
                 "--add-opens=java.management/java.lang.management=ALL-UNNAMED",
-                "-XX:+HeapDumpOnOutOfMemoryError"
+                "-XX:+HeapDumpOnOutOfMemoryError",
+                "-XX:-UseGCOverheadLimit"
             );
 
             test.getJvmArgumentProviders().add(new SimpleCommandLineArgumentProvider("-XX:HeapDumpPath=" + heapdumpDir));

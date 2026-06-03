@@ -209,16 +209,15 @@ public class AccountableQueryCircuitBreakerIT extends ESIntegTestCase {
         );
 
         SearchRequestBuilder searchRequest = client().prepareSearch(INDEX_NAME).setQuery(query);
-        assertFailures(searchRequest, RestStatus.BAD_REQUEST, containsString("Data too large"));
+        assertFailures(searchRequest, RestStatus.TOO_MANY_REQUESTS, containsString("Data too large"));
         assertThat("Request circuit breaker should have tripped", getRequestBreakerTrippedCount(), greaterThanOrEqualTo(1L));
     }
 
     private void assertQueryMemoryReleased(QueryBuilder query) throws Exception {
-        long baseline = getRequestBreakerEstimated();
+        assertBusy(() -> assertEquals("Request breaker should be empty before search", 0L, getRequestBreakerEstimated()));
         client().prepareSearch(INDEX_NAME).setQuery(query).get().decRef();
-        assertBusy(() -> {
-            long estimated = getRequestBreakerEstimated();
-            assertEquals("Request breaker memory should be released after search completes", baseline, estimated);
-        });
+        assertBusy(
+            () -> assertEquals("Request breaker memory should be released after search completes", 0L, getRequestBreakerEstimated())
+        );
     }
 }
