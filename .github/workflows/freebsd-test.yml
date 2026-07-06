@@ -53,7 +53,7 @@ jobs:
           mkdir -p /usr/local/etc/pkg/repos
           printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
           pkg update -f -q
-          pkg install -y bash curl openjdk17 openjdk19 openjdk20 openjdk21 openjdk22 openjdk23 openjdk25 protobuf gcc13
+          pkg install -y bash curl openjdk17 openjdk21 openjdk25 openjdk26 protobuf gcc13
 
       - name: Mount proc
         shell: freebsd {0}
@@ -66,8 +66,8 @@ jobs:
         run: |
           pw user add -n action -m
           su action -c 'mkdir ~/.gradle'
-          su action -c 'printf "org.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk19,/usr/local/openjdk20,/usr/local/openjdk21,/usr/local/openjdk22,/usr/local/openjdk23,/usr/local/openjdk25\n" > ~/.gradle/gradle.properties'
-          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\nexport LOCAL_VEC_BINARY_OS=freebsd\nexport CI=false\n" >> ~/.shrc'
+          su action -c 'printf "org.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk21,/usr/local/openjdk25,/usr/local/openjdk26\n" > ~/.gradle/gradle.properties'
+          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\nexport LOCAL_VEC_BINARY_OS=freebsd\nLOCAL_PQRS_BINARY=true\nexport CI=false\n" >> ~/.shrc'
           cd $GITHUB_WORKSPACE
           chown -R action:wheel .
 
