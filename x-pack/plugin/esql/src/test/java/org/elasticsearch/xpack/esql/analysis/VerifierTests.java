@@ -990,6 +990,14 @@ public class VerifierTests extends ESTestCase {
                 error("row a = to_dateperiod(\"1 " + unit + "\")")
             );
         }
+        assertThat(
+            error("ROW a = NULL::time_duration", defaultAnalyzer),
+            equalTo("1:9: cannot use [NULL::time_duration] directly in a row assignment")
+        );
+        assertThat(
+            error("ROW a = NULL::date_period", defaultAnalyzer),
+            equalTo("1:9: cannot use [NULL::date_period] directly in a row assignment")
+        );
     }
 
     public void testSubtractDateTimeFromTemporal() {
@@ -1118,6 +1126,66 @@ public class VerifierTests extends ESTestCase {
                 error("row x = 1 | eval y = to_dateperiod(\"1 " + unit + "\")")
             );
         }
+        assertThat(
+            error("ROW x = 1 | EVAL y = NULL::time_duration", defaultAnalyzer),
+            equalTo("1:18: EVAL does not support type [time_duration] as the return data type of expression [NULL::time_duration]")
+        );
+        assertThat(
+            error("ROW x = 1 | EVAL y = NULL::date_period", defaultAnalyzer),
+            equalTo("1:18: EVAL does not support type [date_period] as the return data type of expression [NULL::date_period]")
+        );
+    }
+
+    public void testPeriodAndDurationInStats() {
+        for (var unit : TIME_DURATIONS) {
+            assertThat(
+                error("ROW x = 1 | STATS COUNT(*) BY 1 " + unit, defaultAnalyzer),
+                equalTo("1:31: cannot group by on [time_duration] type for grouping [1 " + unit + "]")
+            );
+        }
+        for (var unit : DATE_PERIODS) {
+            assertThat(
+                error("ROW x = 1 | STATS COUNT(*) BY 1 " + unit, defaultAnalyzer),
+                equalTo("1:31: cannot group by on [date_period] type for grouping [1 " + unit + "]")
+            );
+        }
+    }
+
+    public void testPeriodAndDurationInSort() {
+        for (var unit : TIME_DURATIONS) {
+            assertThat(error("ROW x = 1 | SORT 1 " + unit, defaultAnalyzer), equalTo("1:18: cannot sort on time_duration"));
+        }
+        for (var unit : DATE_PERIODS) {
+            assertThat(error("ROW x = 1 | SORT 1 " + unit, defaultAnalyzer), equalTo("1:18: cannot sort on date_period"));
+        }
+    }
+
+    public void testPeriodAndDurationInInlineStats() {
+        assumeTrue("INLINE STATS must be enabled", EsqlCapabilities.Cap.INLINE_STATS.isEnabled());
+        for (var unit : TIME_DURATIONS) {
+            assertThat(
+                error("ROW x = 1 | INLINE STATS COUNT(*) BY 1 " + unit, defaultAnalyzer),
+                equalTo("1:38: cannot group by on [time_duration] type for grouping [1 " + unit + "]")
+            );
+        }
+        for (var unit : DATE_PERIODS) {
+            assertThat(
+                error("ROW x = 1 | INLINE STATS COUNT(*) BY 1 " + unit, defaultAnalyzer),
+                equalTo("1:38: cannot group by on [date_period] type for grouping [1 " + unit + "]")
+            );
+        }
+    }
+
+    public void testPeriodAndDurationInChangePoint() {
+        assumeTrue("change_point must be enabled", EsqlCapabilities.Cap.CHANGE_POINT.isEnabled());
+        // Keys are qualifiedNames so we can't use literals; test via columns. The ROW assignment also
+        // fires an error but the CHANGE_POINT key error still appears in the output.
+        assertThat(error("""
+            ROW key = NULL::time_duration, value = 0
+            | CHANGE_POINT value ON key""", defaultAnalyzer), containsString("change point key [key] must be sortable"));
+        assertThat(error("""
+            ROW key = NULL::date_period, value = 0
+            | CHANGE_POINT value ON key""", defaultAnalyzer), containsString("change point key [key] must be sortable"));
     }
 
     public void testFilterNonBoolField() {
@@ -1985,6 +2053,30 @@ public class VerifierTests extends ESTestCase {
             "1:22: third argument of [case(name == \"a\", network.bytes_in, 0)] must be [counter_long], found value [0] type [integer]",
             error("FROM test | eval x = case(name == \"a\", network.bytes_in, 0)", tsdb)
         );
+    }
+
+    public void testConditionalFunctionsWithSupportedNonNumericTypes() {
+        for (String functionName : List.of("greatest", "least")) {
+            // Keyword
+            query("from test | eval x = " + functionName + "(\"a\", \"b\")");
+            query("from test | eval x = " + functionName + "(first_name, last_name)");
+            query("from test | eval x = " + functionName + "(first_name, \"b\")");
+
+            // Text
+            // Note: In ESQL text fields are not optimized for sorting/aggregation but Greatest/Least should work if they implement
+            // BytesRefEvaluator
+            query("from test | eval x = " + functionName + "(title, \"b\")", fullTextAnalyzer);
+
+            // IP
+            query("from test | eval x = " + functionName + "(to_ip(\"127.0.0.1\"), to_ip(\"127.0.0.2\"))");
+
+            // Version
+            query("from test | eval x = " + functionName + "(to_version(\"1.0.0\"), to_version(\"1.1.0\"))");
+
+            // Date
+            query("from test | eval x = " + functionName + "(\"2023-01-01\" :: datetime, \"2023-01-02\" :: datetime)");
+            query("from test | eval x = " + functionName + "(\"2023-01-01\" :: date_nanos, \"2023-01-02\" :: date_nanos)");
+        }
     }
 
     public void testToDatePeriodTimeDurationInInvalidPosition() {
