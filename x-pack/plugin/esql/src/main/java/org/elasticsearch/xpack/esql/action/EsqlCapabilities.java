@@ -1103,10 +1103,33 @@ public class EsqlCapabilities {
         FIX_STATS_MV_CONSTANT_FOLD,
 
         /**
+         * Fix on multi-values that were unrolled and were still producing warnings in expressions
+         * that do not accept multi-values
+         *
+         * See https://github.com/elastic/elasticsearch/issues/134706
+         */
+        FIX_UNROLLED_FOLDABLE_MV_WARNING,
+
+        /**
+         * Can we load {@code constant_keyword} field values? This is supported everywhere but the unit CsvTests.
+         */
+        LOAD_CONSTANT_KEYWORD,
+
+        /**
+         * {@code CASE} folding with DATE_PERIOD and TIME_DURATION return types.
+         */
+        CASE_FOLD_TEMPORAL_AMOUNT,
+
+        /**
          * Fix for {@code _index LIKE} not supporting the {@code ?} wildcard character.
          * see <a href="https://github.com/elastic/elasticsearch/issues/146364">ES|QL: _index LIKE with ? #146364</a>
          */
         FIX_INDEX_LIKE_QUESTION_MARK_WILDCARD,
+
+        /**
+         * Catch-and-rethrow determinization complexity errors as 400s rather than 500s
+         */
+        HANDLE_DETERMINIZATION_COMPLEXITY,
 
         /**
          * Create new block when filtering OrdinalBytesRefBlock
