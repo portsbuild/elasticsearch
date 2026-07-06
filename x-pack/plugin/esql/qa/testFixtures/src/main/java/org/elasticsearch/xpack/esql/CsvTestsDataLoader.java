@@ -132,6 +132,9 @@ public class CsvTestsDataLoader {
             "partial_mapping_sample_data.csv"
         ),
         new TestDataset("mv_sample_data"),
+        new TestDataset("event_alerts"),
+        new TestDataset("event_logs"),
+        new TestDataset("event_empty").noData(),
         new TestDataset("alerts"),
         new TestDataset("sample_data").withIndex("sample_data_str").withTypeMapping(Map.of("client_ip", "keyword")),
         new TestDataset("sample_data").withIndex("sample_data_ts_long")
@@ -747,18 +750,35 @@ public class CsvTestsDataLoader {
     }
 
     private static boolean clusterHasViewSupport(RestClient client) throws IOException {
-        Request request = new Request("GET", "/_query/view");
+        // Use the _capabilities endpoint so we check ALL nodes, not just the coordinator.
+        // Views CRUD operations are master-node transport actions; if any node (e.g. an older data
+        // node acting as master) doesn't know the action, it will crash with an AssertionError.
+        Request capRequest = new Request("GET", "_capabilities");
+        capRequest.addParameter("method", "POST");
+        capRequest.addParameter("path", "/_query");
+        capRequest.addParameter("capabilities", "views_crud_as_index_actions");
         try {
-            Response ignored = client.performRequest(request);
-        } catch (ResponseException e) {
-            int code = e.getResponse().getStatusLine().getStatusCode();
-            // Different versions of Elasticsearch return different codes when views are not supported
-            if (code == 410 || code == 400 || code == 500 || code == 405) {
-                return false;
+            Response response = client.performRequest(capRequest);
+            try (var content = response.getEntity().getContent()) {
+                Map<String, Object> map = XContentHelper.convertToMap(XContentType.JSON.xContent(), content, false);
+                if (!Boolean.TRUE.equals(map.get("supported"))) {
+                    return false;
+                }
             }
-            throw e;
+        } catch (ResponseException e) {
+            return false;
         }
-        return true;
+        // The _capabilities check above confirms all nodes know the view transport actions (safe for
+        // BWC mixed-cluster tests). Now verify the view CRUD REST endpoints are actually reachable:
+        // in serverless mode, RestPutViewAction has no @ServerlessScope annotation, so those routes
+        // return 410 Gone — but _capabilities does not check the serverless scope and would still
+        // report "supported: true". A direct GET confirms real accessibility.
+        try {
+            client.performRequest(new Request("GET", "/_query/view"));
+            return true;
+        } catch (ResponseException e) {
+            return false;
+        }
     }
 
     private static void deleteView(RestClient client, String viewName) throws IOException {

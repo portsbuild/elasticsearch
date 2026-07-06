@@ -15,7 +15,6 @@ plugins {
   id 'groovy-gradle-plugin'
   id 'groovy'
   id 'elasticsearch.build-tools'
-  id 'elasticsearch.eclipse'
   id 'elasticsearch.versions'
   id 'elasticsearch.formatting'
 }
@@ -32,6 +31,10 @@ gradlePlugin {
   // with the java-gradle-plugin
   automatedPublishing = false
   plugins {
+    base {
+      id = 'elasticsearch.base'
+      implementationClass = 'org.elasticsearch.gradle.internal.ElasticsearchBasePlugin'
+    }
     build {
       id = 'elasticsearch.build'
       implementationClass = 'org.elasticsearch.gradle.internal.BuildPlugin'

@@ -341,6 +341,26 @@ sv:double
 ;
 
 
+Approximate stats with dependent potentially multi-valued variables
+required_capability: approximation_v7
+required_capability: approximation_fix_mv_functions
+request_stored: skip
+
+SET approximation={"rows":10000}\;
+FROM many_numbers
+    | STATS median = MEDIAN(sv)::INTEGER
+    | EVAL append = MV_APPEND([42,42,42], median),
+           diff   = MV_DIFFERENCE([42,42,42], median),
+           isect  = MV_INTERSECTION([42,42,42], median),
+           slice  = MV_SLICE([42,42,42], median % 2, median % 2 + 1),
+           union  = MV_SORT(MV_UNION([42,42,42], median))
+;
+
+median:integer | append:integer      | diff:integer    | isect:integer | slice:integer | union:integer | _approximation_confidence_interval(median):integer | _approximation_certified(median):boolean
+450..540       | [42,42,42,450..540] | [42,42,42]      | null          | [42,42]       | [42,450..540] | [450..540,450..540]                                | {any}
+;
+
+
 Approximate stats with dependent constant variable
 required_capability: approximation_v7
 request_stored: skip
@@ -363,18 +383,18 @@ request_stored: skip
 SET approximation={"rows":100000}\;
 FROM many_numbers
     | MV_EXPAND mv
-    | STATS avg=avg(mv), median=median(mv), one=3/(1+SUM(2.0*mv)/SUM(mv)) BY mv
+    | STATS avg=avg(mv), one=3/(1+SUM(2.0*mv)/SUM(mv)) BY mv
     | SORT mv DESC
     | LIMIT 5
 ;
 
 
-avg:double               | median:double | one:double | mv:integer | _approximation_confidence_interval(avg):double      | _approximation_certified(avg):boolean | _approximation_confidence_interval(median):double | _approximation_certified(median):boolean | _approximation_confidence_interval(one):double | _approximation_certified(one):boolean
-1999.999999..2000.000001 | 2000          | 1          | 2000       | [1999.999999..2000.000001,1999.999999..2000.000001] | {any}                                 | [2000,2000]                                       | {any}                                    | [1,1]                                          | {any}
-1998.999999..1999.000001 | 1999          | 1          | 1999       | [1998.999999..1999.000001,1998.999999..1999.000001] | {any}                                 | [1999,1999]                                       | {any}                                    | [1,1]                                          | {any}
-1997.999999..1998.000001 | 1998          | 1          | 1998       | [1997.999999..1998.000001,1997.999999..1998.000001] | {any}                                 | [1998,1998]                                       | {any}                                    | [1,1]                                          | {any}
-1996.999999..1997.000001 | 1997          | 1          | 1997       | [1996.999999..1997.000001,1996.999999..1997.000001] | {any}                                 | [1997,1997]                                       | {any}                                    | [1,1]                                          | {any}
-1995.999999..1996.000001 | 1996          | 1          | 1996       | [1995.999999..1996.000001,1995.999999..1996.000001] | {any}                                 | [1996,1996]                                       | {any}                                    | [1,1]                                          | {any}
+avg:double               | one:double | mv:integer | _approximation_confidence_interval(avg):double      | _approximation_certified(avg):boolean | _approximation_confidence_interval(one):double | _approximation_certified(one):boolean
+1999.999999..2000.000001 | 1          | 2000       | [1999.999999..2000.000001,1999.999999..2000.000001] | {any}                                 | [1,1]                                          | {any}
+1998.999999..1999.000001 | 1          | 1999       | [1998.999999..1999.000001,1998.999999..1999.000001] | {any}                                 | [1,1]                                          | {any}
+1997.999999..1998.000001 | 1          | 1998       | [1997.999999..1998.000001,1997.999999..1998.000001] | {any}                                 | [1,1]                                          | {any}
+1996.999999..1997.000001 | 1          | 1997       | [1996.999999..1997.000001,1996.999999..1997.000001] | {any}                                 | [1,1]                                          | {any}
+1995.999999..1996.000001 | 1          | 1996       | [1995.999999..1996.000001,1995.999999..1996.000001] | {any}                                 | [1,1]                                          | {any}
 ;
 
 

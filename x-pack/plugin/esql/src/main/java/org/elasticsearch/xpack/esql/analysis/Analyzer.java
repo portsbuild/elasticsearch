@@ -1053,9 +1053,13 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                         context
                     );
                 } else {
-                    // resolve the using columns against the left and the right side then assemble the new join config
-                    leftKeys = resolveUsingColumns(join.config().leftFields(), join.left().output(), "left");
-                    rightKeys = resolveUsingColumns(join.config().rightFields(), join.right().output(), "right");
+                    // resolve each side independently — skip sides that are already resolved
+                    leftKeys = Resolvables.resolved(config.leftFields())
+                        ? config.leftFields()
+                        : resolveUsingColumns(config.leftFields(), join.left().output(), "left");
+                    rightKeys = Resolvables.resolved(config.rightFields())
+                        ? config.rightFields()
+                        : resolveUsingColumns(config.rightFields(), join.right().output(), "right");
                 }
                 config = new JoinConfig(type, leftKeys, rightKeys, joinOnConditions);
 
@@ -1222,9 +1226,8 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                     }
                     resolved.add(resolvedField);
                 } else {
-                    throw new IllegalStateException(
-                        "Surprised to discover column [ " + col.name() + "] already resolved when resolving JOIN keys"
-                    );
+                    // Multi-key LOOKUP JOIN re-entry after ResolveUnmapped: prior-pass-resolved keys pass through.
+                    resolved.add(col);
                 }
             }
             return resolved;
@@ -2433,22 +2436,7 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                 return esr;
             });
             if (res.equals(plan) == false) {
-                res = res.transformUp(Project.class, p -> {
-                    List<Attribute> syntheticAttributesToCarryOver = new ArrayList<>();
-                    for (Attribute attr : p.inputSet()) {
-                        if (attr.synthetic() && p.outputSet().contains(attr) == false) {
-                            syntheticAttributesToCarryOver.add(attr);
-                        }
-                    }
-
-                    if (syntheticAttributesToCarryOver.isEmpty()) {
-                        return p;
-                    }
-
-                    List<NamedExpression> newProjections = new ArrayList<>(p.projections());
-                    newProjections.addAll(syntheticAttributesToCarryOver);
-                    return new Project(p.source(), p.child(), newProjections);
-                });
+                res = carryOverSyntheticAttributesThroughProjects(res);
             }
             return res;
         }
@@ -2505,6 +2493,9 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                             AbstractConvertFunction originalConversionFunction = (AbstractConvertFunction) entry.getValue();
                             Expression originalField = originalConversionFunction.field();
                             Expression newConvertFunction = convertExpression.replaceChildren(Collections.singletonList(originalField));
+                            // Resolve surrogates immediately, since expressions stored in UnionTypeEsField are serialized
+                            // to data nodes, and SurrogateExpressions cannot be serialized.
+                            newConvertFunction = SubstituteSurrogateExpressions.rule(newConvertFunction);
                             indexToConversionExpressions.put(indexName, newConvertFunction);
                         }
                         // The only code that creates MultiTypeEsField with synthetic=false (reaching this branch) is
@@ -3043,6 +3034,11 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                     : unionAll
             );
 
+            // Carry over the synthetic convert-function attributes added to UnionAll output through Project above it.
+            if (convertFunctionsToAttributes.isEmpty() == false) {
+                planWithConvertFunctionsPushedDown = carryOverSyntheticAttributesThroughProjects(planWithConvertFunctionsPushedDown);
+            }
+
             // Then replace the conversion functions with the corresponding attributes in the UnionAll output
             LogicalPlan planWithConvertFunctionsReplaced = replaceConvertFunctions(
                 planWithConvertFunctionsPushedDown,
@@ -3497,12 +3493,36 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
 
         /**
          * Update the attributes referencing the updated UnionAll output.
+         * <p>
+         * Beyond updating direct attribute references (e.g. a {@code KEEP} projection that names a fork-output attribute),
+         * this also cascades the type change through {@link Alias} nodes whose child is a direct attribute reference.
+         * <p>
+         * Before the expression walk, scan the plan for {@link Alias} nodes whose immediate child is an attribute already in the update
+         * map and add a {@code {alias.id → alias.withNewType}} entry. Because the traversal is bottom-up, chained renames such as
+         * {@code x AS y, y AS z} are picked up in order. We register the alias output unconditionally (i.e. without comparing the alias'
+         * current child type against the map entry), because the alias may have been re-resolved with the updated child type
+         * (e.g. inside a {@code ResolvingProject}) while other places in the plan (e.g. an outer {@code OrderBy}) still hold a cached
+         * attribute reference, produced by {@link Alias#toAttribute()}, with the stale (pre-update) type. The subsequent
+         * {@code transformExpressionsUp} then repairs every consumer of the alias output in one pass.
          */
         private static LogicalPlan updateAttributesReferencingUpdatedUnionAllOutput(
             LogicalPlan plan,
             List<Attribute> updatedUnionAllOutput
         ) {
-            Map<NameId, Attribute> idToUpdatedAttr = updatedUnionAllOutput.stream().collect(Collectors.toMap(Attribute::id, attr -> attr));
+            Map<NameId, Attribute> idToUpdatedAttr = new HashMap<>();
+            updatedUnionAllOutput.forEach(attr -> idToUpdatedAttr.put(attr.id(), attr));
+
+            // Cascade: collect Alias nodes above the UnionAll whose child directly references a changed attribute.
+            plan.forEachExpressionUp(Alias.class, alias -> {
+                if (alias.child() instanceof Attribute childAttr) {
+                    Attribute updatedChild = idToUpdatedAttr.get(childAttr.id());
+                    if (updatedChild != null) {
+                        Attribute aliasOutput = alias.toAttribute();
+                        idToUpdatedAttr.put(aliasOutput.id(), aliasOutput.withDataType(updatedChild.dataType()));
+                    }
+                }
+            });
+
             return plan.transformExpressionsUp(Attribute.class, expr -> {
                 Attribute updated = idToUpdatedAttr.get(expr.id());
                 return (updated != null && expr.dataType() != updated.dataType()) ? updated : expr;
@@ -3552,5 +3572,35 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
             }
             return newChildren.size() == unionAll.children().size() ? unionAll : unionAll.replaceChildren(newChildren);
         }
+    }
+
+    /**
+     * Carry over synthetic attributes that are present in a {@link Project}'s input set but missing from its
+     * projections, by appending them to the projection list. Used by the union-types resolution rules to
+     * propagate newly introduced synthetic {@code $$<field>$converted_to$<type>} attributes (from either
+     * multi-typed {@link EsRelation} fields or {@link UnionAll} branches) through intermediate
+     * {@link Project} nodes that were resolved before the synthetic existed (typically those produced by
+     * {@code RENAME}, {@code KEEP}, or {@code DROP}). Without this, downstream references inserted above
+     * the {@link Project} would have no binding and the optimizer's plan consistency check would later
+     * fail with missing references.
+     *
+     * <p>Used by both {@code ResolveUnionTypes} (for multi-typed EsRelation fields) and
+     * {@code ResolveUnionTypesInUnionAll} (for type conflicts across {@link UnionAll} branches).
+     */
+    private static LogicalPlan carryOverSyntheticAttributesThroughProjects(LogicalPlan plan) {
+        return plan.transformUp(Project.class, p -> {
+            List<Attribute> syntheticAttributesToCarryOver = new ArrayList<>();
+            for (Attribute attr : p.inputSet()) {
+                if (attr.synthetic() && p.outputSet().contains(attr) == false) {
+                    syntheticAttributesToCarryOver.add(attr);
+                }
+            }
+            if (syntheticAttributesToCarryOver.isEmpty()) {
+                return p;
+            }
+            List<NamedExpression> newProjections = new ArrayList<>(p.projections());
+            newProjections.addAll(syntheticAttributesToCarryOver);
+            return new Project(p.source(), p.child(), newProjections);
+        });
     }
 }

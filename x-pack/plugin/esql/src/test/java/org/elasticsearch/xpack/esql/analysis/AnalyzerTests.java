@@ -6440,6 +6440,1335 @@ public class AnalyzerTests extends ESTestCase {
         }
     }
 
+    /*
+     * Project[[_meta_field{r}#31, emp_no{r}#32, fname{r}#5, gender{r}#34, hire_date{r}#35, job{r}#36, job.raw{r}#37, languages{r}#38,
+     *          last_name{r}#39, long_noidx{r}#40, salary{r}#41, emp_no_str{r}#8]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_Eval[[$$emp_no$converted_to$keyword{r$}#44 AS emp_no_str#8]]
+     *     \_Project[[_meta_field{r}#31, emp_no{r}#32, first_name{r}#33 AS fname#5, gender{r}#34, hire_date{r}#35, job{r}#36,
+     *                job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41,
+     *                $$emp_no$converted_to$keyword{r$}#44]]
+     *       \_UnionAll[[_meta_field{r}#31, emp_no{r}#32, $$emp_no$converted_to$keyword{r$}#44, first_name{r}#33, gender{r}#34,
+     *                   hire_date{r}#35, job{r}#36, job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41]]
+     *         |_Project[[_meta_field{f}#15, emp_no{f}#9, $$emp_no$converted_to$keyword{r$}#42, first_name{f}#10, gender{f}#11,
+     *                    hire_date{f}#16, job{f}#17, job.raw{f}#18, languages{f}#12, last_name{f}#13, long_noidx{f}#19, salary{f}#14]]
+     *         | \_Eval[[TOSTRING(emp_no{f}#9) AS $$emp_no$converted_to$keyword#42]]
+     *         |   \_EsRelation[test][_meta_field{f}#15, emp_no{f}#9, first_name{f}#10, ..]
+     *         \_Project[[_meta_field{f}#26, emp_no{f}#20, $$emp_no$converted_to$keyword{r$}#43, first_name{f}#21, gender{f}#22,
+     *                    hire_date{f}#27, job{f}#28, job.raw{f}#29, languages{f}#23, last_name{f}#24, long_noidx{f}#30, salary{f}#25]]
+     *           \_Eval[[TOSTRING(emp_no{f}#20) AS $$emp_no$converted_to$keyword#43]]
+     *             \_Subquery[]
+     *               \_EsRelation[test][_meta_field{f}#26, emp_no{f}#20, first_name{f}#21, ..]
+     */
+    public void testSubqueryWithRenameAndEvalWithConversionFunction() {
+        assumeTrue(
+            "Require the fix of synthetic attributes carry over",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_CARRY_OVER_SYNTHETIC_CONVERT_ATTRIBUTES.isEnabled()
+        );
+        LogicalPlan plan = basic().query("""
+            FROM test, (FROM test)
+            | RENAME first_name AS fname
+            | EVAL emp_no_str = to_string(emp_no)
+            """);
+
+        String syntheticName = "$$emp_no$converted_to$keyword";
+
+        // The outer Project is the final user-facing projection added during finishing analysis.
+        Project outerProject = as(plan, Project.class);
+        // The synthetic attribute must NOT leak into the user-visible output.
+        assertTrue(
+            "User-visible projection should not expose [" + syntheticName + "]",
+            outerProject.projections().stream().noneMatch(p -> syntheticName.equals(p.name()))
+        );
+
+        Limit limit = as(outerProject.child(), Limit.class);
+        Eval outerEval = as(limit.child(), Eval.class);
+        assertEquals(1, outerEval.fields().size());
+        Alias outerAlias = outerEval.fields().get(0);
+        assertEquals("emp_no_str", outerAlias.name());
+        // ResolveUnionTypesInUnionAll's replaceConvertFunctions rewrote to_string(emp_no) to a direct ref.
+        ReferenceAttribute outerRef = as(outerAlias.child(), ReferenceAttribute.class);
+        assertEquals(syntheticName, outerRef.name());
+        assertEquals(KEYWORD, outerRef.dataType());
+
+        Project renameProject = as(outerEval.child(), Project.class);
+        // The fix carries the synthetic attribute through the RENAME-Project so that the reference
+        // inserted above (in outerEval) has a binding. Without the fix this assertion would fail.
+        assertTrue(
+            "Project above UnionAll must expose [" + syntheticName + "] in its projections",
+            renameProject.projections().stream().anyMatch(p -> syntheticName.equals(p.name()))
+        );
+        // Confirm the RENAME's original alias is still present.
+        assertTrue(
+            "Project should still rename first_name to fname",
+            renameProject.projections().stream().anyMatch(p -> p instanceof Alias a && "fname".equals(a.name()))
+        );
+
+        UnionAll unionAll = as(renameProject.child(), UnionAll.class);
+        // Sanity: the synthetic must also be in the UnionAll's output (this part isn't new).
+        assertTrue(
+            "UnionAll output must contain [" + syntheticName + "]",
+            unionAll.output().stream().anyMatch(a -> syntheticName.equals(a.name()))
+        );
+        assertEquals(2, unionAll.children().size());
+        // Each branch must materialize the synthetic via TOSTRING(emp_no) AS $$emp_no$converted_to$keyword.
+        for (int i = 0; i < 2; i++) {
+            Project branchProject = as(unionAll.children().get(i), Project.class);
+            assertTrue(
+                "UnionAll branch [" + i + "] must expose [" + syntheticName + "]",
+                branchProject.projections().stream().anyMatch(p -> syntheticName.equals(p.name()))
+            );
+            Eval branchEval = as(branchProject.child(), Eval.class);
+            assertTrue(
+                "UnionAll branch [" + i + "] Eval must define [" + syntheticName + "] via TOSTRING(emp_no)",
+                branchEval.fields().stream().anyMatch(a -> syntheticName.equals(a.name()))
+            );
+        }
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_Eval[[TOSTRING(id{r}#5) AS id_str#8]]
+     *   \_Project[[_meta_field{r}#31, emp_no{r}#32 AS id#5, first_name{r}#33, gender{r}#34, hire_date{r}#35, job{r}#36,
+     *              job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41]]
+     *     \_UnionAll[[_meta_field{r}#31, emp_no{r}#32, first_name{r}#33, gender{r}#34, hire_date{r}#35, job{r}#36,
+     *                 job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41]]
+     *       |_Project[[_meta_field{f}#15, emp_no{f}#9, first_name{f}#10, ..., salary{f}#14]]
+     *       | \_EsRelation[test][_meta_field{f}#15, emp_no{f}#9, first_name{f}#10, ..]
+     *       \_Project[[_meta_field{f}#26, emp_no{f}#20, first_name{f}#21, ..., salary{f}#25]]
+     *         \_Subquery[]
+     *           \_EsRelation[test][_meta_field{f}#26, emp_no{f}#20, first_name{f}#21, ..]
+     */
+    public void testSubqueryWithRenameOnSameFieldAsConvertFunction() {
+        LogicalPlan plan = basic().query("""
+            FROM test, (FROM test)
+            | RENAME emp_no AS id
+            | EVAL id_str = to_string(id)
+            """);
+
+        // No synthetic exists anywhere in the analyzed plan.
+        plan.forEachUp(p -> p.output().forEach(attr -> {
+            assertFalse(
+                "Unexpected synthetic attribute [" + attr.name() + "] in plan node " + p.nodeName(),
+                attr.synthetic() && attr.name().startsWith("$$") && attr.name().contains("$converted_to$")
+            );
+        }));
+
+        // The EVAL contains the un-pushed-down TOSTRING(id) function call.
+        Limit limit = as(plan, Limit.class);
+        Eval outerEval = as(limit.child(), Eval.class);
+        assertEquals(1, outerEval.fields().size());
+        Alias idStrAlias = outerEval.fields().get(0);
+        assertEquals("id_str", idStrAlias.name());
+        ToString toStringFn = as(idStrAlias.child(), ToString.class);
+        ReferenceAttribute idRef = as(toStringFn.field(), ReferenceAttribute.class);
+        assertEquals("id", idRef.name());
+
+        // RENAME-Project below the EVAL exposes the alias [emp_no AS id], and only the regular columns
+        // (no synthetic carry-over because no synthetic was ever created).
+        Project renameProject = as(outerEval.child(), Project.class);
+        assertTrue(
+            "RENAME-Project must rename emp_no to id",
+            renameProject.projections().stream().anyMatch(p -> p instanceof Alias a && "id".equals(a.name()))
+        );
+        assertTrue(
+            "RENAME-Project should not carry over any synthetic conversion attributes",
+            renameProject.projections().stream().noneMatch(p -> p.name().startsWith("$$") && p.name().contains("$converted_to$"))
+        );
+
+        UnionAll unionAll = as(renameProject.child(), UnionAll.class);
+        assertEquals(2, unionAll.children().size());
+        assertTrue(
+            "UnionAll output should not contain any synthetic conversion attributes",
+            unionAll.output().stream().noneMatch(a -> a.name().startsWith("$$") && a.name().contains("$converted_to$"))
+        );
+    }
+
+    /*
+     * Project[[_meta_field{r}#31, id{r}#8, first_name{r}#33, gender{r}#34, hire_date{r}#35, job{r}#36, job.raw{r}#37,
+     *          languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41, emp_no_str{r}#5]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_Project[[_meta_field{r}#31, emp_no{r}#32 AS id#8, first_name{r}#33, gender{r}#34, hire_date{r}#35, job{r}#36,
+     *              job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41, emp_no_str{r}#5,
+     *              $$emp_no$converted_to$keyword{r$}#44]]
+     *     \_Eval[[$$emp_no$converted_to$keyword{r$}#44 AS emp_no_str#5]]
+     *       \_UnionAll[[_meta_field{r}#31, emp_no{r}#32, $$emp_no$converted_to$keyword{r$}#44, first_name{r}#33, gender{r}#34,
+     *                   hire_date{r}#35, job{r}#36, job.raw{r}#37, languages{r}#38, last_name{r}#39, long_noidx{r}#40, salary{r}#41]]
+     *         |_Project[[_meta_field{f}#15, emp_no{f}#9, $$emp_no$converted_to$keyword{r$}#42, first_name{f}#10, gender{f}#11,
+     *                    hire_date{f}#16, job{f}#17, job.raw{f}#18, languages{f}#12, last_name{f}#13, long_noidx{f}#19, salary{f}#14]]
+     *         | \_Eval[[TOSTRING(emp_no{f}#9) AS $$emp_no$converted_to$keyword#42]]
+     *         |   \_EsRelation[test][_meta_field{f}#15, emp_no{f}#9, first_name{f}#10, ..]
+     *         \_Project[[_meta_field{f}#26, emp_no{f}#20, $$emp_no$converted_to$keyword{r$}#43, first_name{f}#21, gender{f}#22,
+     *                    hire_date{f}#27, job{f}#28, job.raw{f}#29, languages{f}#23, last_name{f}#24, long_noidx{f}#30, salary{f}#25]]
+     *           \_Eval[[TOSTRING(emp_no{f}#20) AS $$emp_no$converted_to$keyword#43]]
+     *             \_Subquery[]
+     *               \_EsRelation[test][_meta_field{f}#26, emp_no{f}#20, first_name{f}#21, ..]
+     */
+    public void testSubqueryWithConvertFunctionBeforeRenameOnSameField() {
+        assumeTrue(
+            "Require the fix of synthetic attributes carry over",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_CARRY_OVER_SYNTHETIC_CONVERT_ATTRIBUTES.isEnabled()
+        );
+        LogicalPlan plan = basic().query("""
+            FROM test, (FROM test)
+            | EVAL emp_no_str = to_string(emp_no)
+            | RENAME emp_no AS id
+            """);
+
+        String syntheticName = "$$emp_no$converted_to$keyword";
+
+        // The outer Project added by UnionTypesCleanup drops the synthetic from the user-visible output.
+        Project outerProject = as(plan, Project.class);
+        assertTrue(
+            "User-visible projection should not expose [" + syntheticName + "]",
+            outerProject.projections().stream().noneMatch(p -> syntheticName.equals(p.name()))
+        );
+        // ...but must expose the user-facing renamed column and the new EVAL column.
+        assertTrue("User-visible projection must expose [id]", outerProject.projections().stream().anyMatch(p -> "id".equals(p.name())));
+        assertTrue(
+            "User-visible projection must expose [emp_no_str]",
+            outerProject.projections().stream().anyMatch(p -> "emp_no_str".equals(p.name()))
+        );
+
+        Limit limit = as(outerProject.child(), Limit.class);
+        Project renameProject = as(limit.child(), Project.class);
+        // The RENAME-Project must alias emp_no to id and ALSO carry over the synthetic so it remains
+        // visible above the EVAL until UnionTypesCleanup strips it. Without the fix, the synthetic would
+        // be dropped here.
+        assertTrue(
+            "RENAME-Project must rename emp_no to id",
+            renameProject.projections().stream().anyMatch(p -> p instanceof Alias a && "id".equals(a.name()))
+        );
+        assertTrue(
+            "RENAME-Project must expose [emp_no_str] (the EVAL alias)",
+            renameProject.projections().stream().anyMatch(p -> "emp_no_str".equals(p.name()))
+        );
+        assertTrue(
+            "RENAME-Project must carry over the synthetic [" + syntheticName + "]",
+            renameProject.projections().stream().anyMatch(p -> syntheticName.equals(p.name()))
+        );
+
+        Eval evalNode = as(renameProject.child(), Eval.class);
+        assertEquals(1, evalNode.fields().size());
+        Alias evalAlias = evalNode.fields().get(0);
+        assertEquals("emp_no_str", evalAlias.name());
+        ReferenceAttribute evalRef = as(evalAlias.child(), ReferenceAttribute.class);
+        assertEquals(syntheticName, evalRef.name());
+
+        UnionAll unionAll = as(evalNode.child(), UnionAll.class);
+        assertTrue(
+            "UnionAll output must contain [" + syntheticName + "]",
+            unionAll.output().stream().anyMatch(a -> syntheticName.equals(a.name()))
+        );
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_Aggregate[[],[ABSENT($$id_int$converted_to$keyword{r$}#41,true[BOOLEAN],PT0S[TIME_DURATION])
+     *               AS absent(to_string(id_int))#11]]
+     *   \_MvExpand[other2{r}#5,other2{r}#38]
+     *     \_LookupJoin[LEFT,[id_int{r}#34, other2{r}#5],[id_int{f}#24, other2{f}#31],false,null]
+     *       |_Project[[extra1{r}#32, extra2{r}#33 AS other2#5, id_int{r}#34, ip_addr{r}#35, is_active_bool{r}#36,
+     *                  name_str{r}#37, $$id_int$converted_to$keyword{r$}#41]]
+     *       | \_UnionAll[[extra1{r}#32, extra2{r}#33, id_int{r}#34, $$id_int$converted_to$keyword{r$}#41,
+     *                     ip_addr{r}#35, is_active_bool{r}#36, name_str{r}#37]]
+     *       |   |_Project[[extra1{f}#16, extra2{f}#17, id_int{f}#12, $$id_int$converted_to$keyword{r$}#39,
+     *       |   |          ip_addr{f}#15, is_active_bool{f}#14, name_str{f}#13]]
+     *       |   | \_Eval[[TOSTRING(id_int{f}#12) AS $$id_int$converted_to$keyword#39]]
+     *       |   |   \_EsRelation[multi_column_joinable][extra1{f}#16, extra2{f}#17, id_int{f}#12, ip_addr{f..]
+     *       |   \_Project[[extra1{f}#22, extra2{f}#23, id_int{f}#18, $$id_int$converted_to$keyword{r$}#40,
+     *       |              ip_addr{f}#21, is_active_bool{f}#20, name_str{f}#19]]
+     *       |     \_Eval[[TOSTRING(id_int{f}#18) AS $$id_int$converted_to$keyword#40]]
+     *       |       \_Subquery[]
+     *       |         \_EsRelation[multi_column_joinable][extra1{f}#22, extra2{f}#23, id_int{f}#18, ip_addr{f..]
+     *       \_EsRelation[multi_column_joinable_lookup][LOOKUP][date{f}#28, date_nanos{f}#29, id_int{f}#24, ip_addr..]
+     */
+    public void testSubqueryWithRenameAndOtherProcessingCommandsWithConversionFunction() {
+        assumeTrue(
+            "Require the fix of synthetic attributes carry over",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_CARRY_OVER_SYNTHETIC_CONVERT_ATTRIBUTES.isEnabled()
+        );
+        LogicalPlan plan = analyzer().addIndex("multi_column_joinable", "mapping-multi_column_joinable.json")
+            .addLookupIndex("multi_column_joinable_lookup", "mapping-multi_column_joinable_lookup.json")
+            .query("""
+                FROM multi_column_joinable, (FROM multi_column_joinable)
+                | RENAME extra2 AS other2
+                | LOOKUP JOIN multi_column_joinable_lookup ON id_int, other2
+                | MV_EXPAND other2
+                | STATS absent(to_string(id_int))
+                """);
+
+        String syntheticName = "$$id_int$converted_to$keyword";
+
+        // Limit -> Aggregate (STATS) -> MvExpand -> LookupJoin -> Project (RENAME) -> UnionAll.
+        Limit limit = as(plan, Limit.class);
+        Aggregate aggregate = as(limit.child(), Aggregate.class);
+        // The aggregate's only expression is absent(to_string(id_int)), with to_string(id_int) already rewritten
+        // by ResolveUnionTypesInUnionAll.replaceConvertFunctions to a reference to the synthetic attribute.
+        assertEquals(1, aggregate.aggregates().size());
+        Alias aggAlias = as(aggregate.aggregates().get(0), Alias.class);
+        assertEquals("absent(to_string(id_int))", aggAlias.name());
+        // The Aggregate's child input set must expose the synthetic so the rewritten reference resolves.
+        assertTrue(
+            "Aggregate's input must include [" + syntheticName + "] for absent(to_string(id_int)) to resolve",
+            aggregate.inputSet().stream().anyMatch(a -> syntheticName.equals(a.name()))
+        );
+
+        MvExpand mvExpand = as(aggregate.child(), MvExpand.class);
+        ReferenceAttribute mvExpandTarget = as(mvExpand.target(), ReferenceAttribute.class);
+        assertEquals("other2", mvExpandTarget.name());
+
+        LookupJoin lookupJoin = as(mvExpand.child(), LookupJoin.class);
+        EsRelation lookupRight = as(lookupJoin.right(), EsRelation.class);
+        assertEquals("multi_column_joinable_lookup", lookupRight.indexPattern());
+
+        // The Project produced by RENAME extra2 AS other2 sits directly above the UnionAll on the LookupJoin's
+        // left side. Its projections must include the synthetic carried over from the UnionAll - this is the
+        // post-condition guaranteed by carryOverSyntheticAttributesThroughProjects.
+        Project renameProject = as(lookupJoin.left(), Project.class);
+        assertTrue(
+            "RENAME-Project above UnionAll must alias extra2 to other2",
+            renameProject.projections().stream().anyMatch(p -> p instanceof Alias a && "other2".equals(a.name()))
+        );
+        assertTrue(
+            "RENAME-Project above UnionAll must expose [" + syntheticName + "] in its projections",
+            renameProject.projections().stream().anyMatch(p -> syntheticName.equals(p.name()))
+        );
+
+        UnionAll unionAll = as(renameProject.child(), UnionAll.class);
+        assertTrue(
+            "UnionAll output must contain [" + syntheticName + "]",
+            unionAll.output().stream().anyMatch(a -> syntheticName.equals(a.name()))
+        );
+        assertEquals(2, unionAll.children().size());
+        // Each branch materializes the synthetic via TOSTRING(id_int) AS $$id_int$converted_to$keyword.
+        for (int i = 0; i < 2; i++) {
+            Project branchProject = as(unionAll.children().get(i), Project.class);
+            assertTrue(
+                "UnionAll branch [" + i + "] must expose [" + syntheticName + "]",
+                branchProject.projections().stream().anyMatch(p -> syntheticName.equals(p.name()))
+            );
+            Eval branchEval = as(branchProject.child(), Eval.class);
+            assertTrue(
+                "UnionAll branch [" + i + "] Eval must define [" + syntheticName + "] via TOSTRING(id_int)",
+                branchEval.fields().stream().anyMatch(a -> syntheticName.equals(a.name()))
+            );
+        }
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_Project[[x{r}#6]]
+     *   \_Project[[emp_no{r}#35 AS x#6]]
+     *     \_Project[[emp_no{r}#35]]
+     *       \_UnionAll[[_meta_field{r}#34, emp_no{r}#35, first_name{r}#36, gender{r}#37, hire_date{r}#38, job{r}#39, job.raw{r}#40,
+     *                   languages{r}#41, last_name{r}#42, long_noidx{r}#43, salary{r}#44, language_code{r}#45, language_name{r}#46]]
+     *         |_Project[[_meta_field{f}#14, emp_no{f}#8, first_name{f}#9, gender{f}#10, hire_date{f}#15, job{f}#16, job.raw{f}#17,
+     *                    languages{f}#11, last_name{f}#12, long_noidx{f}#18, salary{f}#13, language_code{r}#21, language_name{r}#22]]
+     *         | \_Eval[[null[INTEGER] AS language_code#21, null[KEYWORD] AS language_name#22]]
+     *         |   \_EsRelation[test][_meta_field{f}#14, emp_no{f}#8, first_name{f}#9, ge..]
+     *         \_Project[[_meta_field{r}#23, emp_no{r}#24, first_name{r}#25, gender{r}#26, hire_date{r}#27, job{r}#28, job.raw{r}#29,
+     *                    languages{r}#30, last_name{r}#31, long_noidx{r}#32, salary{r}#33, language_code{f}#19, language_name{f}#20]]
+     *           \_Eval[[null[KEYWORD] AS _meta_field#23, null[INTEGER] AS emp_no#24, null[KEYWORD] AS first_name#25,
+     *                   null[TEXT] AS gender#26, null[DATETIME] AS hire_date#27, null[TEXT] AS job#28, null[KEYWORD] AS job.raw#29,
+     *                   null[INTEGER] AS languages#30, null[KEYWORD] AS last_name#31, null[LONG] AS long_noidx#32,
+     *                   null[INTEGER] AS salary#33]]
+     *             \_Subquery[]
+     *               \_EsRelation[languages][language_code{f}#19, language_name{f}#20]
+     */
+    public void testSubqueryRenameKeepStarOnMissingColumnPreservesType() {
+        LogicalPlan plan = basic().addLanguages().query("""
+            FROM test, (FROM languages)
+            | KEEP emp_no
+            | RENAME emp_no AS x
+            | KEEP *
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        Project project = as(limit.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute x = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("x", x.name());
+        assertEquals(INTEGER, x.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(INTEGER, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute emp_no = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("emp_no", emp_no.name());
+        assertEquals(INTEGER, emp_no.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "emp_no".equals(a.name()) && INTEGER.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[x{r}#7,ASC,LAST]]]
+     *   \_Project[[x{r}#7, y{r}#10]]
+     *     \_Project[[network.total_bytes_in{r}#79 AS x#7, network.eth0.tx{r}#77 AS y#10]]
+     *       \_Project[[network.total_bytes_in{r}#79, network.eth0.tx{r}#77]]
+     *         \_UnionAll[[@timestamp{r}#61, client.ip{r}#62, cluster{r}#63, event{r}#64, event_city{r}#65, event_city_boundary{r}#66,
+     *                   event_location{r}#67, event_log{r}#68, event_shape{r}#69, events_received{r}#70, network.bytes_in{r}#71,
+     *                   network.cost{r}#72, network.eth0.currently_connected_clients{r}#73, network.eth0.firmware_version{r}#74,
+     *                   network.eth0.last_up{r}#75, network.eth0.rx{r}#76, network.eth0.tx{r}#77, network.eth0.up{r}#78,
+     *                   network.total_bytes_in{r}#79, network.total_cost{r}#80, pod{r}#81, language_code{r}#82, language_name{r}#83]]
+     *         |_Project[[@timestamp{f}#12, client.ip{f}#16, cluster{f}#13, event{f}#17, event_city{f}#20, event_city_boundary{f}#21,
+     *                    event_location{f}#23, event_log{f}#18, event_shape{f}#22, events_received{f}#19, network.bytes_in{f}#25,
+     *                    network.cost{f}#27, network.eth0.currently_connected_clients{f}#35, network.eth0.firmware_version{f}#34,
+     *                    network.eth0.last_up{f}#33, network.eth0.rx{f}#32, network.eth0.tx{f}#31, network.eth0.up{f}#30,
+     *                    network.total_bytes_in{r}#84, network.total_cost{r}#85, pod{f}#14, language_code{r}#38, language_name{r}#39]]
+     *         | \_Eval[[TOLONG(network.total_bytes_in{f}#26) AS network.total_bytes_in#84,
+     *                   TODOUBLE(network.total_cost{f}#28) AS network.total_cost#85]]
+     *         |   \_Eval[[null[INTEGER] AS language_code#38, null[KEYWORD] AS language_name#39]]
+     *         |     \_EsRelation[k8s][@timestamp{f}#12, client.ip{f}#16, cluster{f}#13, e..]
+     *         \_Project[[@timestamp{r}#40, client.ip{r}#41, cluster{r}#42, event{r}#43, event_city{r}#44, event_city_boundary{r}#45,
+     *                    event_location{r}#46, event_log{r}#47, event_shape{r}#48, events_received{r}#49, network.bytes_in{r}#50,
+     *                    network.cost{r}#51, network.eth0.currently_connected_clients{r}#52, network.eth0.firmware_version{r}#53,
+     *                    network.eth0.last_up{r}#54, network.eth0.rx{r}#55, network.eth0.tx{r}#56, network.eth0.up{r}#57,
+     *                    network.total_bytes_in{r}#58, network.total_cost{r}#59, pod{r}#60, language_code{f}#36, language_name{f}#37]]
+     *           \_Eval[[null[DATETIME] AS @timestamp#40, null[IP] AS client.ip#41, null[KEYWORD] AS cluster#42,
+     *                   null[KEYWORD] AS event#43, null[GEO_POINT] AS event_city#44, null[GEO_SHAPE] AS event_city_boundary#45,
+     *                   null[CARTESIAN_POINT] AS event_location#46, null[TEXT] AS event_log#47, null[CARTESIAN_SHAPE] AS event_shape#48,
+     *                   null[LONG] AS events_received#49, null[LONG] AS network.bytes_in#50, null[DOUBLE] AS network.cost#51,
+     *                   null[INTEGER] AS network.eth0.currently_connected_clients#52, null[VERSION] AS network.eth0.firmware_version#53,
+     *                   null[DATE_NANOS] AS network.eth0.last_up#54, null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.rx#55,
+     *                   null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.tx#56, null[BOOLEAN] AS network.eth0.up#57,
+     *                   null[LONG] AS network.total_bytes_in#58, null[DOUBLE] AS network.total_cost#59, null[KEYWORD] AS pod#60]]
+     *             \_Subquery[]
+     *               \_EsRelation[languages][language_code{f}#36, language_name{f}#37]
+     */
+    public void testSubqueryRenameKeepOnMissingCounterFields() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().query("""
+            FROM k8s, (FROM languages)
+            | KEEP network.total_bytes_in, network.eth0.tx
+            | RENAME network.total_bytes_in AS x, network.eth0.tx AS y
+            | KEEP *
+            | SORT x
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute xOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(LONG, xOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(2, projections.size());
+        ReferenceAttribute x = as(projections.get(0), ReferenceAttribute.class);
+        ReferenceAttribute y = as(projections.get(1), ReferenceAttribute.class);
+        assertEquals("x", x.name());
+        assertEquals(LONG, x.dataType());
+        assertEquals("y", y.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(2, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(LONG, xAlias.dataType());
+        Alias yAlias = as(projections.get(1), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(2, projections.size());
+        ReferenceAttribute total_bytes_in = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("network.total_bytes_in", total_bytes_in.name());
+        assertEquals(LONG, total_bytes_in.dataType());
+        ReferenceAttribute network_eth0_tx = as(projections.get(1), ReferenceAttribute.class);
+        assertEquals("network.eth0.tx", network_eth0_tx.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, network_eth0_tx.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+        assertTrue(
+            unionAll.output().stream().anyMatch(a -> "network.eth0.tx".equals(a.name()) && AGGREGATE_METRIC_DOUBLE.equals(a.dataType()))
+        );
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#9,ASC,LAST]]]
+     *  \_Project[[y{r}#9]]
+     *   \_Project[[network.total_bytes_in{r}#78 AS y#9]]
+     *     \_Project[[network.total_bytes_in{r}#78]]
+     *       \_UnionAll[[@timestamp{r}#60, client.ip{r}#61, cluster{r}#62, event{r}#63, event_city{r}#64, event_city_boundary{r}#65,
+     *                   event_location{r}#66, event_log{r}#67, event_shape{r}#68, events_received{r}#69, network.bytes_in{r}#70,
+     *                   network.cost{r}#71, network.eth0.currently_connected_clients{r}#72, network.eth0.firmware_version{r}#73,
+     *                   network.eth0.last_up{r}#74, network.eth0.rx{r}#75, network.eth0.tx{r}#76, network.eth0.up{r}#77,
+     *                   network.total_bytes_in{r}#78, network.total_cost{r}#79, pod{r}#80, language_code{r}#81, language_name{r}#82]]
+     *         |_Project[[@timestamp{f}#11, client.ip{f}#15, cluster{f}#12, event{f}#16, event_city{f}#19, event_city_boundary{f}#20,
+     *                    event_location{f}#22, event_log{f}#17, event_shape{f}#21, events_received{f}#18, network.bytes_in{f}#24,
+     *                    network.cost{f}#26, network.eth0.currently_connected_clients{f}#34, network.eth0.firmware_version{f}#33,
+     *                    network.eth0.last_up{f}#32, network.eth0.rx{f}#31, network.eth0.tx{f}#30, network.eth0.up{f}#29,
+     *                    network.total_bytes_in{r}#83, network.total_cost{r}#84, pod{f}#13, language_code{r}#37, language_name{r}#38]]
+     *         | \_Eval[[TOLONG(network.total_bytes_in{f}#25) AS network.total_bytes_in#83,
+     *                   TODOUBLE(network.total_cost{f}#27) AS network.total_cost#84]]
+     *         |   \_Eval[[null[INTEGER] AS language_code#37, null[KEYWORD] AS language_name#38]]
+     *         |     \_EsRelation[k8s][@timestamp{f}#11, client.ip{f}#15, cluster{f}#12, e..]
+     *         \_Project[[@timestamp{r}#39, client.ip{r}#40, cluster{r}#41, event{r}#42, event_city{r}#43, event_city_boundary{r}#44,
+     *         event_location{r}#45, event_log{r}#46, event_shape{r}#47, events_received{r}#48, network.bytes_in{r}#49,
+     *         network.cost{r}#50, network.eth0.currently_connected_clients{r}#51, network.eth0.firmware_version{r}#52,
+     *         network.eth0.last_up{r}#53, network.eth0.rx{r}#54, network.eth0.tx{r}#55, network.eth0.up{r}#56,
+     *         network.total_bytes_in{r}#57, network.total_cost{r}#58, pod{r}#59, language_code{f}#35, language_name{f}#36]]
+     *           \_Eval[[null[DATETIME] AS @timestamp#39, null[IP] AS client.ip#40, null[KEYWORD] AS cluster#41, null[KEYWORD] AS event#42,
+     *                   null[GEO_POINT] AS event_city#43, null[GEO_SHAPE] AS event_city_boundary#44,
+     *                   null[CARTESIAN_POINT] AS event_location#45, null[TEXT] AS event_log#46, null[CARTESIAN_SHAPE] AS event_shape#47,
+     *                   null[LONG] AS events_received#48, null[LONG] AS network.bytes_in#49, null[DOUBLE] AS network.cost#50,
+     *                   null[INTEGER] AS network.eth0.currently_connected_clients#51, null[VERSION] AS network.eth0.firmware_version#52,
+     *                   null[DATE_NANOS] AS network.eth0.last_up#53, null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.rx#54,
+     *                   null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.tx#55, null[BOOLEAN] AS network.eth0.up#56,
+     *                   null[LONG] AS network.total_bytes_in#57, null[DOUBLE] AS network.total_cost#58, null[KEYWORD] AS pod#59]]
+     *             \_Subquery[]
+     *               \_EsRelation[languages][language_code{f}#35, language_name{f}#36]
+     */
+    public void testSubqueryRenameChainKeepStarOnMissingCounterField() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().query("""
+            FROM k8s, (FROM languages)
+            | KEEP network.total_bytes_in
+            | RENAME network.total_bytes_in AS x, x as y
+            | KEEP y
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute y = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("y", y.name());
+        assertEquals(LONG, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias yAlias = as(projections.get(0), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(LONG, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute total_bytes_in = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("network.total_bytes_in", total_bytes_in.name());
+        assertEquals(LONG, total_bytes_in.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#9,ASC,LAST]]]
+     *  \_Project[[y{r}#9]]
+     *   \_Project[[x{r}#6 AS y#9]]
+     *     \_Project[[network.total_bytes_in{r}#78 AS x#6]]
+     *       \_Project[[network.total_bytes_in{r}#78]]
+     *         \_UnionAll[[@timestamp{r}#60, client.ip{r}#61, cluster{r}#62, event{r}#63, event_city{r}#64, event_city_boundary{r}#65,
+     *                     event_location{r}#66, event_log{r}#67, event_shape{r}#68, events_received{r}#69, network.bytes_in{r}#70,
+     *                     network.cost{r}#71, network.eth0.currently_connected_clients{r}#72, network.eth0.firmware_version{r}#73,
+     *                     network.eth0.last_up{r}#74, network.eth0.rx{r}#75, network.eth0.tx{r}#76, network.eth0.up{r}#77,
+     *                     network.total_bytes_in{r}#78, network.total_cost{r}#79, pod{r}#80, language_code{r}#81, language_name{r}#82]]
+     *           |_Project[[@timestamp{f}#11, client.ip{f}#15, cluster{f}#12, event{f}#16, event_city{f}#19, event_city_boundary{f}#20,
+     *                      event_location{f}#22, event_log{f}#17, event_shape{f}#21, events_received{f}#18, network.bytes_in{f}#24,
+     *                      network.cost{f}#26, network.eth0.currently_connected_clients{f}#34, network.eth0.firmware_version{f}#33,
+     *                      network.eth0.last_up{f}#32, network.eth0.rx{f}#31, network.eth0.tx{f}#30, network.eth0.up{f}#29,
+     *                      network.total_bytes_in{r}#83, network.total_cost{r}#84, pod{f}#13, language_code{r}#37, language_name{r}#38]]
+     *           | \_Eval[[TOLONG(network.total_bytes_in{f}#25) AS network.total_bytes_in#83,
+     *                     TODOUBLE(network.total_cost{f}#27) AS network.total_cost#84]]
+     *           |   \_Eval[[null[INTEGER] AS language_code#37, null[KEYWORD] AS language_name#38]]
+     *           |     \_EsRelation[k8s][@timestamp{f}#11, client.ip{f}#15, cluster{f}#12, e..]
+     *           \_Project[[@timestamp{r}#39, client.ip{r}#40, cluster{r}#41, event{r}#42, event_city{r}#43, event_city_boundary{r}#44,
+     *                      event_location{r}#45, event_log{r}#46, event_shape{r}#47, events_received{r}#48, network.bytes_in{r}#49,
+     *                      network.cost{r}#50, network.eth0.currently_connected_clients{r}#51, network.eth0.firmware_version{r}#52,
+     *                      network.eth0.last_up{r}#53, network.eth0.rx{r}#54, network.eth0.tx{r}#55, network.eth0.up{r}#56,
+     *                      network.total_bytes_in{r}#57, network.total_cost{r}#58, pod{r}#59, language_code{f}#35, language_name{f}#36]]
+     *             \_Eval[[null[DATETIME] AS @timestamp#39, null[IP] AS client.ip#40, null[KEYWORD] AS cluster#41,
+     *                     null[KEYWORD] AS event#42, null[GEO_POINT] AS event_city#43, null[GEO_SHAPE] AS event_city_boundary#44,
+     *                     null[CARTESIAN_POINT] AS event_location#45, null[TEXT] AS event_log#46, null[CARTESIAN_SHAPE] AS event_shape#47,
+     *                     null[LONG] AS events_received#48, null[LONG] AS network.bytes_in#49, null[DOUBLE] AS network.cost#50,
+     *                     null[INTEGER] AS network.eth0.currently_connected_clients#51, null[VERSION] AS network.eth0.firmware_version#52,
+     *                     null[DATE_NANOS] AS network.eth0.last_up#53, null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.rx#54,
+     *                     null[AGGREGATE_METRIC_DOUBLE] AS network.eth0.tx#55, null[BOOLEAN] AS network.eth0.up#56,
+     *                     null[LONG] AS network.total_bytes_in#57, null[DOUBLE] AS network.total_cost#58, null[KEYWORD] AS pod#59]]
+     *               \_Subquery[]
+     *                 \_EsRelation[languages][language_code{f}#35, language_name{f}#36]
+     */
+    public void testSubqueryDoubleRenameKeepStarOnMissingCounterField() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().query("""
+            FROM k8s, (FROM languages)
+            | KEEP network.total_bytes_in
+            | RENAME network.total_bytes_in AS x
+            | RENAME x as y
+            | KEEP *
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute y = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("y", y.name());
+        assertEquals(LONG, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias yAlias = as(projections.get(0), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(LONG, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(LONG, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute total_bytes_in = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("network.total_bytes_in", total_bytes_in.name());
+        assertEquals(LONG, total_bytes_in.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[x{r}#7,ASC,LAST]]]
+     *   \_Project[[x{r}#7, y{r}#10]]
+     *     \_Project[[network.total_bytes_in{r}#79 AS x#7, network.eth0.tx{r}#77 AS y#10]]
+     *       \_Project[[network.total_bytes_in{r}#79, network.eth0.tx{r}#77]]
+     *         \_UnionAll[...]
+     *           |_...
+     *           \_...
+     *
+     * Same as {@link #testSubqueryRenameKeepOnMissingCounterFields()} but with {@code SET unmapped_fields="nullify"}
+     */
+    public void testSubqueryRenameKeepOnMissingCounterFieldsWithNullifyAndSort() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        assumeTrue("Requires OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW", EsqlCapabilities.Cap.OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW.isEnabled());
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().statement("""
+            SET unmapped_fields="nullify";
+            FROM k8s, (FROM languages)
+            | KEEP network.total_bytes_in, network.eth0.tx
+            | RENAME network.total_bytes_in AS x, network.eth0.tx AS y
+            | KEEP *
+            | SORT x
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute xOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(LONG, xOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(2, projections.size());
+        ReferenceAttribute x = as(projections.get(0), ReferenceAttribute.class);
+        ReferenceAttribute y = as(projections.get(1), ReferenceAttribute.class);
+        assertEquals("x", x.name());
+        assertEquals(LONG, x.dataType());
+        assertEquals("y", y.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(2, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(LONG, xAlias.dataType());
+        Alias yAlias = as(projections.get(1), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(2, projections.size());
+        ReferenceAttribute total_bytes_in = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("network.total_bytes_in", total_bytes_in.name());
+        assertEquals(LONG, total_bytes_in.dataType());
+        ReferenceAttribute network_eth0_tx = as(projections.get(1), ReferenceAttribute.class);
+        assertEquals("network.eth0.tx", network_eth0_tx.name());
+        assertEquals(AGGREGATE_METRIC_DOUBLE, network_eth0_tx.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+        assertTrue(
+            unionAll.output().stream().anyMatch(a -> "network.eth0.tx".equals(a.name()) && AGGREGATE_METRIC_DOUBLE.equals(a.dataType()))
+        );
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#9,ASC,LAST]]]
+     *   \_Project[[y{r}#9]]
+     *     \_Project[[network.total_bytes_in{r}#78 AS y#9]]
+     *       \_Project[[network.total_bytes_in{r}#78]]
+     *         \_UnionAll[...]
+     *
+     * Same as {@link #testSubqueryRenameChainKeepStarOnMissingCounterField()} but with {@code SET unmapped_fields="nullify"}
+     */
+    public void testSubqueryRenameChainKeepStarOnMissingCounterFieldWithNullifyAndSort() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        assumeTrue("Requires OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW", EsqlCapabilities.Cap.OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW.isEnabled());
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().statement("""
+            SET unmapped_fields="nullify";
+            FROM k8s, (FROM languages)
+            | KEEP network.total_bytes_in
+            | RENAME network.total_bytes_in AS x, x as y
+            | KEEP y
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute y = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("y", y.name());
+        assertEquals(LONG, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias yAlias = as(projections.get(0), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(LONG, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute total_bytes_in = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("network.total_bytes_in", total_bytes_in.name());
+        assertEquals(LONG, total_bytes_in.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#?,ASC,LAST]]]
+     *   \_Project[[<remaining fields>, x{r}#? AS y#?]]
+     *     \_Project[[<remaining fields>, network.total_bytes_in{r}#? AS x#?]]
+     *       \_Project[[<remaining fields after DROP>]]
+     *         \_UnionAll[...]
+     *
+     * DROP variant of {@link #testSubqueryDoubleRenameKeepStarOnMissingCounterFieldWithNullifyAndSort()}.
+     */
+    public void testSubqueryDoubleRenameDropStarOnMissingCounterFieldWithNullifyAndSort() {
+        assumeTrue(
+            "Require the fix to inconsistent counter type",
+            EsqlCapabilities.Cap.SUBQUERY_IN_FROM_COMMAND_UNION_TYPES_IMPLICIT_CASTING_INCONSISTENT_AFTER_RENAME.isEnabled()
+        );
+        assumeTrue("Requires OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW", EsqlCapabilities.Cap.OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW.isEnabled());
+        LogicalPlan plan = analyzer().addK8sDownsampled().addLanguages().statement("""
+            SET unmapped_fields="nullify";
+            FROM k8s, (FROM languages)
+            | DROP @timestamp, language_*
+            | RENAME network.total_bytes_in AS x
+            | RENAME x as y
+            | KEEP *
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        ReferenceAttribute y = as(
+            projections.stream().filter(p -> "y".equals(p.name())).findFirst().orElseThrow(),
+            ReferenceAttribute.class
+        );
+        assertEquals(LONG, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        Alias yAlias = as(projections.stream().filter(p -> "y".equals(p.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        Alias xAlias = as(projections.stream().filter(p -> "x".equals(p.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        ReferenceAttribute totalBytesIn = as(
+            projections.stream().filter(p -> "network.total_bytes_in".equals(p.name())).findFirst().orElseThrow(),
+            ReferenceAttribute.class
+        );
+        assertEquals(LONG, totalBytesIn.dataType());
+        assertTrue("@timestamp should have been dropped", projections.stream().noneMatch(p -> "@timestamp".equals(p.name())));
+        assertTrue("language_code should have been dropped", projections.stream().noneMatch(p -> "language_code".equals(p.name())));
+        assertTrue("language_name should have been dropped", projections.stream().noneMatch(p -> "language_name".equals(p.name())));
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "network.total_bytes_in".equals(a.name()) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[x{r}#?,ASC,LAST]]]
+     *   \_Project[[x{r}#?]]
+     *     \_Project[[@timestamp{r}#? AS x#?]]
+     *       \_Project[[@timestamp{r}#?]]
+     *         \_UnionAll[[@timestamp{r}#?, client_ip{r}#?, event_duration{r}#?, message{r}#?]]
+     *           |_Project[[@timestamp{r}#?, client_ip{f}#?, event_duration{f}#?, message{f}#?]]
+     *           | \_Eval[[TODATENANOS(@timestamp{f}#?) AS @timestamp#?]]
+     *           |   \_EsRelation[sample_data][@timestamp{f}#?(date), client_ip{f}#?, event_duration..]
+     *           \_Project[[@timestamp{f}#?, client_ip{f}#?, event_duration{f}#?, message{f}#?]]
+     *             \_Subquery[]
+     *               \_EsRelation[sample_data_ts_nanos][@timestamp{f}#?(date_nanos), client_ip{f}#?, event_duration..]
+     *
+     * Same pattern as {@link #testSubqueryRenameKeepOnMissingCounterFields()} but the field whose type is updated by the {@code UnionAll}
+     * resolution is {@code @timestamp}, which is mapped as {@code date} in {@code sample_data} and as {@code date_nanos} in
+     * {@code sample_data_ts_nanos}. {@code ResolveUnionTypesInUnionAll} casts the two to {@code DATE_NANOS} implicitly. The alias-cascade
+     * in {@code updateAttributesReferencingUpdatedUnionAllOutput} also transform that reference to {@code DATE_NANOS} for the plan to stay
+     * consistent.
+     */
+    public void testSubqueryRenameKeepOnDateAndDateNanosTimestamp() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsNanosIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_nanos)
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | KEEP *
+            | SORT x
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute xOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(DATE_NANOS, xOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute x = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("x", x.name());
+        assertEquals(DATE_NANOS, x.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(DATE_NANOS, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute timestamp = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("@timestamp", timestamp.name());
+        assertEquals(DATE_NANOS, timestamp.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "@timestamp".equals(a.name()) && DATE_NANOS.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#?,ASC,LAST]]]
+     *   \_Project[[y{r}#?]]
+     *     \_Project[[@timestamp{r}#? AS y#?]]
+     *       \_Project[[@timestamp{r}#?]]
+     *         \_UnionAll[...]
+     */
+    public void testSubqueryRenameChainKeepOnDateAndDateNanosTimestamp() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsNanosIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_nanos)
+            | KEEP @timestamp
+            | RENAME @timestamp AS x, x AS y
+            | KEEP y
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(DATE_NANOS, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute y = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("y", y.name());
+        assertEquals(DATE_NANOS, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias yAlias = as(projections.get(0), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(DATE_NANOS, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute timestamp = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("@timestamp", timestamp.name());
+        assertEquals(DATE_NANOS, timestamp.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "@timestamp".equals(a.name()) && DATE_NANOS.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[y{r}#?,ASC,LAST]]]
+     *   \_Project[[y{r}#?]]
+     *     \_Project[[x{r}#? AS y#?]]
+     *       \_Project[[@timestamp{r}#? AS x#?]]
+     *         \_Project[[@timestamp{r}#?]]
+     *           \_UnionAll[...]
+     */
+    public void testSubqueryDoubleRenameKeepStarOnDateAndDateNanosTimestamp() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsNanosIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_nanos)
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | RENAME x AS y
+            | KEEP *
+            | SORT y
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute yOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(DATE_NANOS, yOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute y = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("y", y.name());
+        assertEquals(DATE_NANOS, y.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias yAlias = as(projections.get(0), Alias.class);
+        assertEquals("y", yAlias.name());
+        assertEquals(DATE_NANOS, yAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(DATE_NANOS, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute timestamp = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("@timestamp", timestamp.name());
+        assertEquals(DATE_NANOS, timestamp.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "@timestamp".equals(a.name()) && DATE_NANOS.equals(a.dataType())));
+    }
+
+    /*
+     * Limit[1000[INTEGER],false,false]
+     * \_OrderBy[[Order[x{r}#6,ASC,LAST]]]
+     *   \_Project[[x{r}#6]]
+     *     \_Project[[@timestamp{r}#18 AS x#6]]
+     *       \_Project[[@timestamp{r}#18]]
+     *         \_UnionAll[[@timestamp{r}#18, client_ip{r}#19, event_duration{r}#20, message{r}#21]]
+     *           |_Project[[@timestamp{r}#22, client_ip{f}#11, event_duration{f}#12, message{f}#13]]
+     *           | \_Eval[[TODATENANOS(@timestamp{f}#10) AS @timestamp#22]]
+     *           |   \_EsRelation[sample_data][@timestamp{f}#10, client_ip{f}#11, event_duration{f..]
+     *           \_Project[[@timestamp{f}#14, client_ip{f}#15, event_duration{f}#16, message{f}#17]]
+     *             \_Subquery[]
+     *               \_EsRelation[sample_data_ts_nanos][@timestamp{f}#14, client_ip{f}#15, event_duration{f..]
+     *
+     * Same as {@link #testSubqueryRenameKeepOnDateAndDateNanosTimestamp()} but with {@code SET unmapped_fields="nullify"}.
+     */
+    public void testSubqueryRenameKeepOnDateAndDateNanosTimestampWithNullify() {
+        assumeTrue("Requires OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW", EsqlCapabilities.Cap.OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW.isEnabled());
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsNanosIndex()).statement("""
+            SET unmapped_fields="nullify";
+            FROM sample_data, (FROM sample_data_ts_nanos)
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | KEEP *
+            | SORT x
+            """);
+
+        Limit limit = as(plan, Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute xOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(DATE_NANOS, xOrder.dataType());
+        Project project = as(orderBy.child(), Project.class);
+        List<? extends NamedExpression> projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute x = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("x", x.name());
+        assertEquals(DATE_NANOS, x.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        Alias xAlias = as(projections.get(0), Alias.class);
+        assertEquals("x", xAlias.name());
+        assertEquals(DATE_NANOS, xAlias.dataType());
+        project = as(project.child(), Project.class);
+        projections = project.projections();
+        assertEquals(1, projections.size());
+        ReferenceAttribute timestamp = as(projections.get(0), ReferenceAttribute.class);
+        assertEquals("@timestamp", timestamp.name());
+        assertEquals(DATE_NANOS, timestamp.dataType());
+        UnionAll unionAll = as(project.child(), UnionAll.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> "@timestamp".equals(a.name()) && DATE_NANOS.equals(a.dataType())));
+    }
+
+    /*
+     * Project[[x{r}#?]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_OrderBy[[Order[x{r}#?,ASC,LAST]]]
+     *     \_Project[[x{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *       \_Project[[@timestamp{r}#? AS x#?, $$@timestamp$converted_to$long{r$}#?]]
+     *         \_Project[[@timestamp{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *           \_Eval[[$$@timestamp$converted_to$long{r$}#? AS @timestamp#?]]
+     *             \_UnionAll[[!@timestamp, $$@timestamp$converted_to$long{r$}#?, client_ip{r}#?, event_duration{r}#?, message{r}#?]]
+     *               |_Project[[@timestamp{r}#?, $$@timestamp$converted_to$long{r$}#?, client_ip{f}#?, event_duration{f}#?, message{f}#?]]
+     *               | \_Eval[[null[KEYWORD] AS @timestamp#?]]
+     *               |   \_Eval[[TOLONG(@timestamp{f}#?) AS $$@timestamp$converted_to$long#?]]
+     *               |     \_EsRelation[sample_data][@timestamp{f}#?(date), client_ip{f}#?, event_duration..]
+     *               \_Project[...same shape, sample_data_ts_long...]
+     *                 \_Eval[[null[KEYWORD] AS @timestamp#?]]
+     *                   \_Eval[[TOLONG(@timestamp{f}#?) AS $$@timestamp$converted_to$long#?]]
+     *                     \_Subquery[]
+     *                       \_EsRelation[sample_data_ts_long][@timestamp{f}#?(long), client_ip{f}#?, event_duration..]
+     *
+     * Mixed {@code date}/{@code long} {@code @timestamp} variant of {@link #testSubqueryRenameKeepOnDateAndDateNanosTimestamp()}.
+     */
+    public void testSubqueryRenameKeepOnDateAndLongTimestampWithExplicitCast() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsLongIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_long)
+            | EVAL @timestamp = @timestamp::long
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | KEEP *
+            | SORT x
+            """);
+
+        // Outer pruning Project that hides the synthetic $$@timestamp$converted_to$long attribute.
+        Project outer = as(plan, Project.class);
+        assertEquals(1, outer.projections().size());
+        ReferenceAttribute xOut = as(outer.projections().get(0), ReferenceAttribute.class);
+        assertEquals("x", xOut.name());
+        assertEquals(LONG, xOut.dataType());
+
+        Limit limit = as(outer.child(), Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        List<Order> order = orderBy.order();
+        assertEquals(1, order.size());
+        ReferenceAttribute xOrder = as(order.get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(LONG, xOrder.dataType());
+
+        // KEEP * — projects x (LONG) plus the carried-over synthetic LONG attribute.
+        Project project = as(orderBy.child(), Project.class);
+        assertProjectionHasLong(project, "x", ReferenceAttribute.class);
+        assertProjectionHasSyntheticTimestampLong(project);
+
+        // RENAME @timestamp AS x — alias x is LONG (cascaded from the EVAL).
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "x", Alias.class);
+
+        // KEEP @timestamp — reference to the rebound @timestamp (LONG via EVAL).
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "@timestamp", ReferenceAttribute.class);
+
+        // EVAL @timestamp = @timestamp::long — replaced with synthetic LONG attribute.
+        Eval eval = as(project.child(), Eval.class);
+        Alias timestampEval = as(eval.fields().stream().filter(f -> "@timestamp".equals(f.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, timestampEval.dataType());
+        ReferenceAttribute syntheticRef = as(timestampEval.child(), ReferenceAttribute.class);
+        assertEquals(LONG, syntheticRef.dataType());
+
+        UnionAll unionAll = as(eval.child(), UnionAll.class);
+        // The original @timestamp in the UnionAll output is UnsupportedAttribute (date + long).
+        Attribute timestampAttr = unionAll.output().stream().filter(a -> "@timestamp".equals(a.name())).findFirst().orElseThrow();
+        as(timestampAttr, UnsupportedAttribute.class);
+        // The synthetic $$@timestamp$converted_to$long carries the LONG cast.
+        assertTrue(unionAll.output().stream().anyMatch(a -> isSyntheticTimestampLong(a) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Project[[y{r}#?]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_OrderBy[[Order[y{r}#?,ASC,LAST]]]
+     *     \_Project[[y{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *       \_Project[[@timestamp{r}#? AS y#?, $$@timestamp$converted_to$long{r$}#?]]
+     *         \_Project[[@timestamp{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *           \_Eval[[$$@timestamp$converted_to$long{r$}#? AS @timestamp#?]]
+     *             \_UnionAll[...]
+     *
+     * Chained {@code RENAME @timestamp AS x, x AS y} variant of the explicit-cast date/long test.
+     */
+    public void testSubqueryRenameChainKeepOnDateAndLongTimestampWithExplicitCast() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsLongIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_long)
+            | EVAL @timestamp = @timestamp::long
+            | KEEP @timestamp
+            | RENAME @timestamp AS x, x AS y
+            | KEEP y
+            | SORT y
+            """);
+
+        Project outer = as(plan, Project.class);
+        assertEquals(1, outer.projections().size());
+        ReferenceAttribute yOut = as(outer.projections().get(0), ReferenceAttribute.class);
+        assertEquals("y", yOut.name());
+        assertEquals(LONG, yOut.dataType());
+
+        Limit limit = as(outer.child(), Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        ReferenceAttribute yOrder = as(orderBy.order().get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+
+        Project project = as(orderBy.child(), Project.class);
+        assertProjectionHasLong(project, "y", ReferenceAttribute.class);
+        assertProjectionHasSyntheticTimestampLong(project);
+
+        // The chain rename collapses to a single Project: @timestamp AS y.
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "y", Alias.class);
+
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "@timestamp", ReferenceAttribute.class);
+
+        Eval eval = as(project.child(), Eval.class);
+        Alias timestampEval = as(eval.fields().stream().filter(f -> "@timestamp".equals(f.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, timestampEval.dataType());
+
+        UnionAll unionAll = as(eval.child(), UnionAll.class);
+        as(unionAll.output().stream().filter(a -> "@timestamp".equals(a.name())).findFirst().orElseThrow(), UnsupportedAttribute.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> isSyntheticTimestampLong(a) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Project[[y{r}#?]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_OrderBy[[Order[y{r}#?,ASC,LAST]]]
+     *     \_Project[[y{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *       \_Project[[x{r}#? AS y#?, $$@timestamp$converted_to$long{r$}#?]]
+     *         \_Project[[@timestamp{r}#? AS x#?, $$@timestamp$converted_to$long{r$}#?]]
+     *           \_Project[[@timestamp{r}#?, $$@timestamp$converted_to$long{r$}#?]]
+     *             \_Eval[[$$@timestamp$converted_to$long{r$}#? AS @timestamp#?]]
+     *               \_UnionAll[...]
+     *
+     * Two separate {@code RENAME} commands variant of the explicit-cast date/long test.
+     */
+    public void testSubqueryDoubleRenameKeepStarOnDateAndLongTimestampWithExplicitCast() {
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsLongIndex()).query("""
+            FROM sample_data, (FROM sample_data_ts_long)
+            | EVAL @timestamp = @timestamp::long
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | RENAME x AS y
+            | KEEP *
+            | SORT y
+            """);
+
+        Project outer = as(plan, Project.class);
+        assertEquals(1, outer.projections().size());
+        ReferenceAttribute yOut = as(outer.projections().get(0), ReferenceAttribute.class);
+        assertEquals("y", yOut.name());
+        assertEquals(LONG, yOut.dataType());
+
+        Limit limit = as(outer.child(), Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        ReferenceAttribute yOrder = as(orderBy.order().get(0).child(), ReferenceAttribute.class);
+        assertEquals("y", yOrder.name());
+        assertEquals(LONG, yOrder.dataType());
+
+        // KEEP * with y (LONG) plus the carried synthetic.
+        Project project = as(orderBy.child(), Project.class);
+        assertProjectionHasLong(project, "y", ReferenceAttribute.class);
+        assertProjectionHasSyntheticTimestampLong(project);
+
+        // RENAME x AS y (second rename).
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "y", Alias.class);
+
+        // RENAME @timestamp AS x (first rename).
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "x", Alias.class);
+
+        // KEEP @timestamp.
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "@timestamp", ReferenceAttribute.class);
+
+        Eval eval = as(project.child(), Eval.class);
+        Alias timestampEval = as(eval.fields().stream().filter(f -> "@timestamp".equals(f.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, timestampEval.dataType());
+
+        UnionAll unionAll = as(eval.child(), UnionAll.class);
+        as(unionAll.output().stream().filter(a -> "@timestamp".equals(a.name())).findFirst().orElseThrow(), UnsupportedAttribute.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> isSyntheticTimestampLong(a) && LONG.equals(a.dataType())));
+    }
+
+    /*
+     * Project[[x{r}#9]]
+     * \_Limit[1000[INTEGER],false,false]
+     *   \_OrderBy[[Order[x{r}#9,ASC,LAST]]]
+     *     \_Project[[x{r}#9, $$@timestamp$converted_to$long{r$}#27]]
+     *       \_Project[[@timestamp{r}#5 AS x#9, $$@timestamp$converted_to$long{r$}#27]]
+     *         \_Project[[@timestamp{r}#5, $$@timestamp$converted_to$long{r$}#27]]
+     *           \_Eval[[$$@timestamp$converted_to$long{r$}#27 AS @timestamp#5]]
+     *             \_UnionAll[[!@timestamp, $$@timestamp$converted_to$long{r$}#27, client_ip{r}#22, event_duration{r}#23, message{r}#24]]
+     *               |_Project[[@timestamp{r}#28, $$@timestamp$converted_to$long{r$}#25, client_ip{f}#14, event_duration{f}#15,
+     *                          message{f}#16]]
+     *               | \_Eval[[null[KEYWORD] AS @timestamp#28]]
+     *               |   \_Eval[[TOLONG(@timestamp{f}#13) AS $$@timestamp$converted_to$long#25]]
+     *               |     \_EsRelation[sample_data][@timestamp{f}#13, client_ip{f}#14, event_duration{f..]
+     *               \_Project[[@timestamp{r}#29, $$@timestamp$converted_to$long{r$}#26, client_ip{f}#19, event_duration{f}#20,
+     *                          message{f}#17]]
+     *                 \_Eval[[null[KEYWORD] AS @timestamp#29]]
+     *                   \_Eval[[TOLONG(@timestamp{f}#18) AS $$@timestamp$converted_to$long#26]]
+     *                     \_Subquery[]
+     *                       \_EsRelation[sample_data_ts_long][@timestamp{f}#18, client_ip{f}#19, event_duration{f..]
+     *
+     * Same shape as {@code testSubqueryRenameKeepOnDateAndLongTimestampWithExplicitCast()} with {@code SET unmapped_fields="nullify"}.
+     */
+    public void testSubqueryRenameKeepOnDateAndLongTimestampWithExplicitCastAndNullify() {
+        assumeTrue("Requires OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW", EsqlCapabilities.Cap.OPTIONAL_FIELDS_NULLIFY_TECH_PREVIEW.isEnabled());
+        LogicalPlan plan = analyzer().addSampleData().addIndex(sampleDataTsLongIndex()).statement("""
+            SET unmapped_fields="nullify";
+            FROM sample_data, (FROM sample_data_ts_long)
+            | EVAL @timestamp = @timestamp::long
+            | KEEP @timestamp
+            | RENAME @timestamp AS x
+            | KEEP *
+            | SORT x
+            """);
+
+        Project outer = as(plan, Project.class);
+        assertEquals(1, outer.projections().size());
+        ReferenceAttribute xOut = as(outer.projections().get(0), ReferenceAttribute.class);
+        assertEquals("x", xOut.name());
+        assertEquals(LONG, xOut.dataType());
+
+        Limit limit = as(outer.child(), Limit.class);
+        OrderBy orderBy = as(limit.child(), OrderBy.class);
+        ReferenceAttribute xOrder = as(orderBy.order().get(0).child(), ReferenceAttribute.class);
+        assertEquals("x", xOrder.name());
+        assertEquals(LONG, xOrder.dataType());
+
+        Project project = as(orderBy.child(), Project.class);
+        assertProjectionHasLong(project, "x", ReferenceAttribute.class);
+        assertProjectionHasSyntheticTimestampLong(project);
+
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "x", Alias.class);
+
+        project = as(project.child(), Project.class);
+        assertProjectionHasLong(project, "@timestamp", ReferenceAttribute.class);
+
+        Eval eval = as(project.child(), Eval.class);
+        Alias timestampEval = as(eval.fields().stream().filter(f -> "@timestamp".equals(f.name())).findFirst().orElseThrow(), Alias.class);
+        assertEquals(LONG, timestampEval.dataType());
+
+        UnionAll unionAll = as(eval.child(), UnionAll.class);
+        as(unionAll.output().stream().filter(a -> "@timestamp".equals(a.name())).findFirst().orElseThrow(), UnsupportedAttribute.class);
+        assertTrue(unionAll.output().stream().anyMatch(a -> isSyntheticTimestampLong(a) && LONG.equals(a.dataType())));
+    }
+
+    private static void assertProjectionHasLong(Project project, String name, Class<? extends NamedExpression> kind) {
+        NamedExpression match = project.projections().stream().filter(p -> name.equals(p.name())).findFirst().orElseThrow();
+        NamedExpression typed = as(match, kind);
+        assertEquals(LONG, typed.dataType());
+    }
+
+    private static void assertProjectionHasSyntheticTimestampLong(Project project) {
+        assertTrue(
+            "expected synthetic $$@timestamp$converted_to$long attribute in projections",
+            project.projections().stream().anyMatch(p -> isSyntheticTimestampLong(p) && LONG.equals(p.dataType()))
+        );
+    }
+
+    private static boolean isSyntheticTimestampLong(NamedExpression e) {
+        // The push-down name is built by Attribute#rawTemporaryName which uses $$ delimiters and
+        // a stable suffix encoding the target type (see ResolveUnionTypesInUnionAll).
+        return e.name().contains("@timestamp") && e.name().contains("converted_to") && e.name().endsWith("long");
+    }
+
+    private static EsIndex sampleDataTsLongIndex() {
+        Map<String, EsField> mapping = Map.of(
+            "@timestamp",
+            new EsField("@timestamp", LONG, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "client_ip",
+            new EsField("client_ip", IP, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "event_duration",
+            new EsField("event_duration", LONG, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "message",
+            new EsField("message", KEYWORD, Map.of(), true, EsField.TimeSeriesFieldType.NONE)
+        );
+        return new EsIndex("sample_data_ts_long", mapping, Map.of("sample_data_ts_long", IndexMode.STANDARD), Map.of(), Map.of(), Map.of());
+    }
+
+    private static EsIndex sampleDataTsNanosIndex() {
+        Map<String, EsField> mapping = Map.of(
+            "@timestamp",
+            new EsField("@timestamp", DATE_NANOS, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "client_ip",
+            new EsField("client_ip", IP, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "event_duration",
+            new EsField("event_duration", LONG, Map.of(), true, EsField.TimeSeriesFieldType.NONE),
+            "message",
+            new EsField("message", KEYWORD, Map.of(), true, EsField.TimeSeriesFieldType.NONE)
+        );
+        return new EsIndex(
+            "sample_data_ts_nanos",
+            mapping,
+            Map.of("sample_data_ts_nanos", IndexMode.STANDARD),
+            Map.of(),
+            Map.of(),
+            Map.of()
+        );
+    }
+
     public void testLookupJoinOnFieldNotAnywhereElse() {
         assumeTrue(
             "requires LOOKUP JOIN ON boolean expression capability",
