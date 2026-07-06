@@ -242,7 +242,7 @@ public abstract class PosixNativeAccess extends AbstractNativeAccess {
     }
 
     static boolean isNativeRustLibSupported() {
-        return isMacOrLinuxAarch64() || isLinuxAmd64();
+        return isMacOrLinuxAarch64() || isLinuxAmd64() || isFreebsdAmd64();
     }
 
     /**

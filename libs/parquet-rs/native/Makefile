@@ -46,6 +46,13 @@ else ifeq ($(UNAME_S),Linux)
   else
     PLATFORM_DIR = linux-x64
   endif
+else ifeq ($(UNAME_S),FreeBSD)
+  LIB_EXT = so
+  ifeq ($(UNAME_M),aarch64)
+    PLATFORM_DIR = freebsd-aarch64
+  else
+    PLATFORM_DIR = freebsd-x64
+  endif
 endif
 
 LIB_NAME = libes_parquet_rs.$(LIB_EXT)
@@ -55,10 +62,12 @@ INSTALL_DIR = ../../native/libraries/build/platform/$(PLATFORM_DIR)
 # --- Cross-compilation targets ---
 
 TARGET_DARWIN  = aarch64-apple-darwin
+TARGET_FREEBSD = x86_64-unknown-freebsd-gnu
 TARGET_LIN_ARM = aarch64-unknown-linux-gnu
 TARGET_LIN_X64 = x86_64-unknown-linux-gnu
 
 OUT_DARWIN  = build/darwin-aarch64/libes_parquet_rs.dylib
+OUT_FREEBSD = build/freebsd-x64/libes_parquet_rs.so
 OUT_LIN_ARM = build/linux-aarch64/libes_parquet_rs.so
 OUT_LIN_X64 = build/linux-x64/libes_parquet_rs.so
 
