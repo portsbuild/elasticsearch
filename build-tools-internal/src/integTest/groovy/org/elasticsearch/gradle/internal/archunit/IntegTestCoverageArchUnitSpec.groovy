@@ -55,7 +55,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
  * the integTest classpath, so a filesystem scan is the simplest self-contained way to index it.
  * No extra build wiring is required: everything needed lives under {@code src/integTest}.
  */
-class TestCoverageArchUnitSpec extends Specification {
+class IntegTestCoverageArchUnitSpec extends Specification {
 
     /** Test class name suffixes accepted as coverage for a task. */
     private static final List<String> TEST_SUFFIXES = ["Tests", "Test", "Spec", "FuncTest", "IT"]
@@ -76,7 +76,6 @@ class TestCoverageArchUnitSpec extends Specification {
         "org.elasticsearch.gradle.internal.precommit.JavaModulePrecommitPlugin",
         "org.elasticsearch.gradle.internal.test.HistoricalFeaturesMetadataPlugin",
         "org.elasticsearch.gradle.internal.test.rerun.InternalTestRerunPlugin",
-        "org.elasticsearch.gradle.internal.testfixtures.TestFixturesPlugin",
         "org.elasticsearch.gradle.internal.EmbeddedProviderPlugin",
         "org.elasticsearch.gradle.internal.InternalAvailableTcpPortProviderPlugin",
         "org.elasticsearch.gradle.internal.InternalPluginBuildPlugin",
@@ -124,7 +123,7 @@ class TestCoverageArchUnitSpec extends Specification {
         // their original base class until the harness supports deferred/multi-project application.
         "org.elasticsearch.gradle.internal.InternalDistributionArchiveCheckPlugin",
         "org.elasticsearch.gradle.internal.InternalDistributionDownloadPlugin",
-        // "org.elasticsearch.gradle.internal.doc.DocsTestPlugin",
+        "org.elasticsearch.gradle.internal.doc.DocsTestPlugin",
         "org.elasticsearch.gradle.internal.test.rest.LegacyYamlRestTestPlugin",
         "org.elasticsearch.gradle.internal.test.rest.RestResourcesPlugin",
         "org.elasticsearch.gradle.internal.test.rest.compat.compat.LegacyYamlRestCompatTestPlugin",
