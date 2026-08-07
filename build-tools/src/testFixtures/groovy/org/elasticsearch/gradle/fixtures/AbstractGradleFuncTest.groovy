@@ -40,9 +40,6 @@ abstract class AbstractGradleFuncTest extends Specification {
     @Rule
     TemporaryFolder testProjectDir = new TemporaryFolder()
 
-    @TempDir
-    File gradleUserHome
-
     File settingsFile
     File buildFile
     File propertiesFile
@@ -51,6 +48,14 @@ abstract class AbstractGradleFuncTest extends Specification {
 
     protected boolean configurationCacheCompatible = true
     protected boolean buildApiRestrictionsDisabled = false
+
+    /**
+     * Opt out of configuration-cache compatibility checking for this test class.
+     * The {@code reason} must explain the root cause so it can be tracked and fixed.
+     */
+    void disableConfigurationCache(String reason) {
+        configurationCacheCompatible = false
+    }
 
     def setup() {
         projectDir = testProjectDir.root
@@ -134,20 +139,34 @@ abstract class AbstractGradleFuncTest extends Specification {
     }
 
     GradleRunner gradleRunner(File projectDir, Object... arguments) {
+        def runner = GradleRunner.create()
+                .withDebug(ManagementFactory.getRuntimeMXBean().getInputArguments()
+                        .toString().indexOf("-agentlib:jdwp") > 0
+                )
+                .withProjectDir(projectDir)
+                .withPluginClasspath()
+                .forwardOutput()
+        File userHome = customGradleUserHome()
+        if (userHome != null) {
+            runner = runner.withTestKitDir(userHome)
+        }
         return new NormalizeOutputGradleRunner(
             new BuildConfigurationAwareGradleRunner(
-                    new InternalAwareGradleRunner(
-                        GradleRunner.create()
-                                .withDebug(ManagementFactory.getRuntimeMXBean().getInputArguments()
-                                        .toString().indexOf("-agentlib:jdwp") > 0
-                                )
-                                .withProjectDir(projectDir)
-                                .withPluginClasspath()
-                                .withTestKitDir(gradleUserHome)
-                                .forwardOutput()
-            ), configurationCacheCompatible,
-                buildApiRestrictionsDisabled)
+                    new InternalAwareGradleRunner(runner),
+                    configurationCacheCompatible,
+                    buildApiRestrictionsDisabled)
         ).withArguments(arguments.collect { it.toString() } + "--full-stacktrace")
+    }
+
+    /**
+     * Override to supply a custom Gradle user home directory for the TestKit runner.
+     * TestKit will set {@code GRADLE_USER_HOME} to this directory for every forked
+     * Gradle process, including any {@code ./gradlew} subprocesses spawned by build
+     * logic.  Returns {@code null} by default, letting TestKit manage its own
+     * temporary directory.
+     */
+    protected File customGradleUserHome() {
+        return null
     }
 
     def assertOutputContains(String givenOutput, String expected) {
@@ -207,6 +226,27 @@ abstract class AbstractGradleFuncTest extends Specification {
           id 'elasticsearch.global-build-info'
           ${extraPlugins.collect { p -> "id '$p'" }.join('\n')}
         }
+        """
+        configureBwcVersions(maintenance, major4, major3, major2, major1, current)
+        return buildFile
+    }
+
+    /**
+     * Appends the {@code BwcVersions} wiring that {@link #internalBuild} relies on as plain
+     * statements, without emitting a {@code plugins {}} block. Use this instead of
+     * {@code internalBuild()} when the build script already has {@code elasticsearch.global-build-info}
+     * applied (for example tests extending {@code AbstractGradleInternalPluginFuncTest}), where an
+     * additional {@code plugins {}} block would be illegal after the plugin has been applied.
+     */
+    void configureBwcVersions(
+        String maintenance = "7.16.10",
+        String major4 = "8.1.3",
+        String major3 = "8.2.1",
+        String major2 = "8.3.0",
+        String major1 = "8.4.0",
+        String current = "9.0.0"
+    ) {
+        buildFile << """
         import org.elasticsearch.gradle.Architecture
 
         import org.elasticsearch.gradle.internal.BwcVersions

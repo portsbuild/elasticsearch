@@ -286,6 +286,14 @@ public class EsqlCapabilities {
         OPTIONAL_FIELDS_FIX_LOAD_PARTIALLY_MAPPED,
 
         /**
+         * Bugfix: {@code IndexResolver.mergedMappings} crashed with {@code UnsupportedOperationException} when a keyword
+         * field with multi-fields (e.g. {@code my_field.analyzed}) was partially unmapped across the queried indices and
+         * {@code SET unmapped_fields="load"} was active. {@code PotentiallyUnmappedKeywordEsField} was constructed with
+         * an immutable empty properties map, preventing child fields from being inserted.
+         */
+        OPTIONAL_FIELDS_FIX_LOAD_KEYWORD_WITH_MULTIFIELDS,
+
+        /**
          * Support specifically for *just* the _index METADATA field. Used by CsvTests, since that is the only metadata field currently
          * supported.
          */
@@ -2624,6 +2632,24 @@ public class EsqlCapabilities {
          * Bugfix in query approximation to not produce confidence intervals for multivalued functions.
          */
         APPROXIMATION_FIX_MV_FUNCTIONS,
+
+        /**
+         * An empty list passed as a query parameter (named or positional) is treated as null
+         * instead of producing an NPE. A defined-but-null param used in an identifier or pattern
+         * position produces a clean parsing error instead of silently yielding an empty column name.
+         * See <a href="https://github.com/elastic/elasticsearch/issues/147448">#147448</a>.
+         */
+        EMPTY_LIST_PARAM_AS_NULL,
+
+        /**
+         * Invalid BBOX envelopes (e.g. maxY &lt; minY, or maxX &lt; minX for cartesian coordinates) are now
+         * consistently handled as a null result with a registered warning, both at fold time and at
+         * runtime, instead of either being silently accepted (cartesian x-ordering was never validated) or
+         * causing an uncaught exception in downstream consumers (ST_GEOHASH/ST_GEOTILE/ST_GEOHEX bounds,
+         * ST_DISTANCE, ST_INTERSECTS/ST_DISJOINT/etc. pushdown to Lucene).
+         * See <a href="https://github.com/elastic/elasticsearch/pull/152877">#152877</a>.
+         */
+        SPATIAL_BBOX_VALIDATION_FIX,
 
         // Last capability should still have a comma for fewer merge conflicts when adding new ones :)
         // This comment prevents the semicolon from being on the previous capability when Spotless formats the file.

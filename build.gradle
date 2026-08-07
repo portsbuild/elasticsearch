@@ -20,7 +20,6 @@ import org.elasticsearch.gradle.VersionProperties
 import org.elasticsearch.gradle.internal.BaseInternalPluginBuildPlugin
 import org.elasticsearch.gradle.internal.ResolveAllDependencies
 import org.elasticsearch.gradle.util.GradleUtils
-import org.elasticsearch.gradle.internal.testfixtures.DockerComposeThrottle
 
 import groovy.xml.XmlParser;
 import groovy.xml.XmlNodePrinter;
@@ -289,6 +288,11 @@ def upgradeCompatibilityZip = tasks.register("upgradeCompatibilityZip", Zip) {
   from(generateUpgradeCompatibilityFile)
 }
 
+def isCiSplitTask = { String taskName ->
+  taskName.startsWith("checkPart") || taskName.startsWith("releaseTestCheck")
+    || taskName == 'functionalTests' || taskName == 'checkBuildLogic'
+}
+
 // TODO: This flag existed as a mechanism to disable bwc tests during a backport. It is no
 // longer used for that purpose, but instead a way to run only functional tests. We should
 // rework the functionalTests task to be more explicit about which tasks it wants to run
@@ -494,7 +498,7 @@ tasks.register("branchConsistency") {
 }
 
 tasks.named("wrapper").configure {
-  distributionType = 'ALL'
+  distributionType = 'BIN'
   def minimumGradleVersionFile = project.file('build-tools-internal/src/main/resources/minimumGradleVersion')
   doLast {
     // copy wrapper properties file to build-tools-internal to allow seamless idea integration
@@ -541,6 +545,9 @@ tasks.named("precommit") {
 }
 
 tasks.named("checkPart1").configure {
+}
+
+tasks.register("checkBuildLogic").configure {
   dependsOn gradle.includedBuild('build-tools').task(':check')
   dependsOn gradle.includedBuild('build-tools-internal').task(':check')
 }
