@@ -28,9 +28,7 @@ public class JdkNativeLibraryProvider extends NativeLibraryProvider {
                 Kernel32Library.class,
                 JdkKernel32Library::new,
                 ParquetRsLibrary.class,
-                JdkParquetRsLibrary::new,
-                FreebsdCLibrary.class,
-                JdkFreebsdCLibrary::new
+                JdkParquetRsLibrary::new
                 )
         );
     }
