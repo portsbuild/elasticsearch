@@ -21,4 +21,7 @@ record PosixMemLibraryConstants(int MAP_ANONYMOUS) {
 
     /** {@code MAP_ANON} from the macOS SDK's {@code sys/mman.h}; {@code MAP_ANONYMOUS} is an alias of it. */
     static final PosixMemLibraryConstants DARWIN = new PosixMemLibraryConstants(0x1000);
+
+    /** {@code MAP_ANON} from {@code sys/sys/mman.h}; {@code MAP_ANONYMOUS} is an alias of it. */
+    static final PosixMemLibraryConstants FREEBSD = new PosixMemLibraryConstants(0x1000);
 }

@@ -56,6 +56,7 @@ final class PosixGuardPageAllocator extends GuardPageAllocator {
         var constants = switch (Platform.current()) {
             case LINUX_X64, LINUX_AARCH64 -> PosixMemLibraryConstants.LINUX;
             case DARWIN_X64, DARWIN_AARCH64 -> PosixMemLibraryConstants.DARWIN;
+            case FREEBSD_X64 -> PosixMemLibraryConstants.FREEBSD;
             case WINDOWS_X64 -> throw new AssertionError("Windows is not a Posix supported platform");
         };
         return new PosixGuardPageAllocator(
