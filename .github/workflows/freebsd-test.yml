@@ -23,10 +23,11 @@ jobs:
       RUNTIME_JAVA_HOME: /usr/local/openjdk25
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
       LOCAL_VEC_BINARY_OS: freebsd
+      LOCAL_PQRS_BINARY: true
       COMMON_BUILD_PARAMS: '-D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -D"org.elasticsearch.nativeaccess.enableVectorLibrary=true"'
       COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Start VM
         id: test-es-freebsd
@@ -36,7 +37,7 @@ jobs:
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS COMMON_BUILD_PARAMS COMMON_TEST_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_PQRS_BINARY COMMON_BUILD_PARAMS COMMON_TEST_PARAMS'
           usesh: true
           copyback: false
           prepare: |
@@ -53,7 +54,7 @@ jobs:
           mkdir -p /usr/local/etc/pkg/repos
           printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
           pkg update -f -q
-          pkg install -y bash curl openjdk17 openjdk21 openjdk25 openjdk26 protobuf gcc13
+          pkg install -y bash curl openjdk17 openjdk21 openjdk25 openjdk26 protobuf gcc14
 
       - name: Mount proc
         shell: freebsd {0}
