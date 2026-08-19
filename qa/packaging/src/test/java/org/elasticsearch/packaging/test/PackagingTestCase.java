@@ -129,7 +129,7 @@ public abstract class PackagingTestCase extends Assert {
         if (Platforms.WINDOWS) {
             systemJavaHome = initShell.run("$Env:SYSTEM_JAVA_HOME").stdout().trim();
         } else {
-            assert Platforms.LINUX || Platforms.DARWIN;
+            assert Platforms.LINUX || Platforms.DARWIN || Platforms.FREEBSD;
             systemJavaHome = initShell.run("echo $SYSTEM_JAVA_HOME").stdout().trim();
         }
     }
