@@ -41,7 +41,7 @@ public class PosixCLibraryTests extends ESTestCase {
             clib = NativeLibraryProvider.instance().getLibrary(PosixCLibrary.class);
             assertNotNull(clib);
         } else {
-            assumeFalse("posix only available on Mac/Linux", Constants.WINDOWS);
+            assumeFalse("posix only available on Mac/Linux/FreeBSD", Constants.WINDOWS);
         }
     }
 
