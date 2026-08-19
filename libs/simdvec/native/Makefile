@@ -114,7 +114,7 @@ else ifeq ($(shell uname -s),FreeBSD)
   LOCAL_PLATFORM = freebsd-x64
   LOCAL_OUTPUT   = $(SO_FBSD_X64)
   local: CLANG = clang++
-  local: CXX_FBSD_X64 = $(CLANG_CXX) -Winline
+  local: CXX_FBSD_X64 = $(CLANG) -Winline
   local: FREEBSD_STRIP = strip --strip-unneeded
   local: FREEBSD_OBJCOPY = objcopy
   local: $(SO_FBSD_X64)
