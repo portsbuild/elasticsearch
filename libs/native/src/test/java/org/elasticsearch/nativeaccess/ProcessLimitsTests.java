@@ -46,7 +46,7 @@ public class ProcessLimitsTests extends ESTestCase {
                     return;
                 }
             }
-            fail("should have read max processes from /proc/curproc/rlimit");
+            fail("should have read max processes from /proc/curproc/rlimit (is /proc mounted?)");
         } else {
             assertThat(nativeAccess.getProcessLimits().maxThreads(), equalTo(-1L));
         }
@@ -74,7 +74,7 @@ public class ProcessLimitsTests extends ESTestCase {
                     return;
                 }
             }
-            fail("should have read max virtual memory size from /proc/curproc/rlimit");
+            fail("should have read max virtual memory size from /proc/curproc/rlimit (is /proc mounted?)");
         } else if (Constants.MAC_OS_X) {
             assertThat(nativeAccess.getProcessLimits().maxVirtualMemorySize(), greaterThanOrEqualTo(0L));
         } else {
@@ -104,7 +104,7 @@ public class ProcessLimitsTests extends ESTestCase {
                     return;
                 }
             }
-            fail("should have read max file size from /proc/curproc/rlimit");
+            fail("should have read max file size from /proc/curproc/rlimit (is /proc mounted?)");
         } else if (Constants.MAC_OS_X) {
             assertThat(nativeAccess.getProcessLimits().maxFileSize(), greaterThanOrEqualTo(0L));
         } else {
