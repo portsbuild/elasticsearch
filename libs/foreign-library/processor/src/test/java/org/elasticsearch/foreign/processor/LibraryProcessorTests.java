@@ -346,7 +346,8 @@ public class LibraryProcessorTests extends ProcessorTestCase {
                     Platform.LINUX_AARCH64,
                     Platform.DARWIN_X64,
                     Platform.DARWIN_AARCH64,
-                    Platform.WINDOWS_X64
+                    Platform.WINDOWS_X64,
+                    Platform.FREEBSD_X64
                 }
             )
             public interface MyLib {
@@ -377,7 +378,7 @@ public class LibraryProcessorTests extends ProcessorTestCase {
             import org.elasticsearch.foreign.CaptureSystemError;
             @LibrarySpecification(
                 name = "testlib",
-                unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.DARWIN_X64 }
+                unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.DARWIN_X64, PLATFORM.FREEBSD_X64 }
             )
             public interface BadLib {
                 @CaptureSystemError
@@ -439,7 +440,8 @@ public class LibraryProcessorTests extends ProcessorTestCase {
                     Platform.LINUX_X64,
                     Platform.LINUX_AARCH64,
                     Platform.DARWIN_X64,
-                    Platform.DARWIN_AARCH64
+                    Platform.DARWIN_AARCH64,
+                    Platform.FREEBSD_X64
                 }
             )
             public interface GoodLib {

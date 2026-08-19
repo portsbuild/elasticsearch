@@ -297,7 +297,8 @@ public class ImplClassWriterTests extends ProcessorTestCase {
                     Platform.LINUX_X64,
                     Platform.LINUX_AARCH64,
                     Platform.DARWIN_X64,
-                    Platform.DARWIN_AARCH64
+                    Platform.DARWIN_AARCH64,
+                    Platform.FREEBSD_X64
                 },
                 symbolResolver = LastErrorLib.FakeResolver.class
             )
