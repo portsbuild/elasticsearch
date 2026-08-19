@@ -186,6 +186,11 @@ public class EsqlCapabilities {
         REPEAT,
 
         /**
+         * Empty input used to loop {@code count} times; int length*count overflow used to bypass the size guard.
+         */
+        FN_REPEAT_FIX_SIZE_GUARD,
+
+        /**
          * Cast string literals to datetime in addition and subtraction when the other side is a date or time interval.
          */
         STRING_LITERAL_AUTO_CASTING_TO_DATETIME_ADD_SUB,
@@ -1137,6 +1142,18 @@ public class EsqlCapabilities {
         FIX_FILTER_ORDINALS,
 
         FIX_ALIAS_ID_WHEN_DROP_ALL_AGGREGATES,
+
+        /**
+         * Fix multi value unsigned long conversion to aggregate metric double
+         */
+        FIX_UNSIGNED_LONG_TO_AGGREGATE_METRIC_DOUBLE,
+
+        /**
+         * FROM_BASE64 returns null + warning for decoded bytes that are not well-formed UTF-8,
+         * instead of producing keywords that crash later string operations.
+         */
+        FN_FROM_BASE64_VALIDATE_UTF8,
+
         // Last capability should still have a comma for fewer merge conflicts when adding new ones :)
         // This comment prevents the semicolon from being on the previous capability when Spotless formats the file.
         ;
