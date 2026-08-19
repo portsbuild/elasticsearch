@@ -9,26 +9,26 @@
 
 package org.elasticsearch.nativeaccess;
 
-import org.elasticsearch.nativeaccess.lib.BsdCLibrary;
+import org.elasticsearch.nativeaccess.lib.FreebsdCLibrary;
 import org.elasticsearch.nativeaccess.lib.NativeLibraryProvider;
-import org.elasticsearch.nativeaccess.lib.PosixCLibrary;
+import org.elasticsearch.nativeaccess.lib.PosixCLibrary.RLimit;
 
-class FreebsdNativeAccess extends PosixNativeAccess {
+public class FreebsdNativeAccess extends PosixNativeAccess {
 
-    private final BsdCLibrary bsdLibc;
+    private final FreebsdCLibrary bsdLibc;
     static final int RLIMIT_NPROC = 7;
 
-    // https://github.com/freebsd/freebsd-src/blob/release/14.2.0/sys/sys/resource.h#L123
     // https://man.freebsd.org/cgi/man.cgi?stat(2)
-    // https://github.com/freebsd/freebsd-src/blob/release/14.2.0/sys/sys/stat.h#L159
+    // sys/sys/resource.h and sys/sys/stat.h
     // Offset of st_size: 112 bytes
     // Offset of st_blocks: 120 bytes
+    // Struct size: 224 bytes
     FreebsdNativeAccess(NativeLibraryProvider libraryProvider) {
         super("FreeBSD", libraryProvider, new PosixConstants(-1L, 10, 1, 6, 512, 224, 112, 120));
-        this.bsdLibc = libraryProvider.getLibrary(BsdCLibrary.class);
+        this.bsdLibc = libraryProvider.getLibrary(FreebsdCLibrary.class);
     }
 
-    // https://github.com/freebsd/freebsd-src/blob/release/14.2.0/sys/sys/resource.h#L110
+    // sys/sys/resource.h
     @Override
     protected long getMaxThreads() {
         return getRLimit(RLIMIT_NPROC, "max number of threads");
@@ -57,7 +57,7 @@ class FreebsdNativeAccess extends PosixNativeAccess {
     // https://github.com/elastic/elasticsearch/blob/v8.15.5/server/src/main/java/org/elasticsearch/bootstrap/SystemCallFilter.java#L556
     @Override
     public void tryInstallExecSandbox() {
-        PosixCLibrary.RLimit limit = libc.newRLimit();
+        RLimit limit = libc.newRLimit();
         limit.rlim_cur(0);
         limit.rlim_max(0);
         if (libc.setrlimit(RLIMIT_NPROC, limit) != 0) {

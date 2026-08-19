@@ -9,7 +9,7 @@
 
 package org.elasticsearch.nativeaccess.jdk;
 
-import org.elasticsearch.nativeaccess.lib.BsdCLibrary;
+import org.elasticsearch.nativeaccess.lib.FreebsdCLibrary;
 import org.elasticsearch.nativeaccess.lib.JavaLibrary;
 import org.elasticsearch.nativeaccess.lib.Kernel32Library;
 import org.elasticsearch.nativeaccess.lib.LinuxCLibrary;
@@ -35,14 +35,14 @@ public class JdkNativeLibraryProvider extends NativeLibraryProvider {
                 JdkLinuxCLibrary::new,
                 MacCLibrary.class,
                 JdkMacCLibrary::new,
+                FreebsdCLibrary.class,
+                JdkFreebsdCLibrary::new,
                 Kernel32Library.class,
                 JdkKernel32Library::new,
                 ZstdLibrary.class,
                 JdkZstdLibrary::new,
                 VectorLibrary.class,
-                JdkVectorLibrary::new,
-                BsdCLibrary.class,
-                JdkFreebsdCLibrary::new
+                JdkVectorLibrary::new
             )
         );
     }
