@@ -54,6 +54,7 @@ CLANG_LINK  = $(CLANG_CXX) --target=arm64-apple-macos14 -fuse-ld=lld -nostdlib -
 CXX_ARM     = $(CLANG_CXX) --target=aarch64-linux-gnu -Winline
 CXX_X64     = $(CLANG_CXX) --target=x86_64-linux-gnu -Winline
 CXX_WIN     = x86_64-w64-mingw32-clang++
+CXX_FBSD_X64 = $(CLANG_CXX) --target=x86_64-unknown-freebsd -Winline
 
 # Strip and debug-info commands per target platform
 DARWIN_STRIP    = llvm-strip$(LLVM_SUFFIX) --strip-debug
@@ -61,6 +62,8 @@ LINUX_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
 LINUX_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
 DARWIN_DSYMUTIL = $(shell llvm-config$(LLVM_SUFFIX) --bindir)/dsymutil
 LLVM_PDBUTIL    = llvm-pdbutil$(LLVM_SUFFIX)
+FREEBSD_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
+FREEBSD_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
 
 # Sources split by tier
 SRC_AARCH64_TIER1 = $(filter-out %_2.cpp, $(wildcard src/vec/c/aarch64/*.cpp))
@@ -74,6 +77,7 @@ OBJ_DARWIN  = build/obj/darwin-aarch64
 OBJ_LIN_ARM = build/obj/linux-aarch64
 OBJ_LIN_X64 = build/obj/linux-x64
 OBJ_WIN_X64 = build/obj/windows-x64
+OBJ_FBSD_X64 = build/obj/freebsd-x64
 
 # Object files
 OBJ_DARWIN_TIER1  = $(SRC_AARCH64_TIER1:src/vec/c/aarch64/%.cpp=$(OBJ_DARWIN)/%.o)
@@ -86,6 +90,9 @@ OBJ_LIN_X64_TIER3 = $(SRC_AMD64_TIER3:src/vec/c/amd64/%.cpp=$(OBJ_LIN_X64)/%.o)
 OBJ_WIN_X64_TIER1 = $(SRC_AMD64_TIER1:src/vec/c/amd64/%.cpp=$(OBJ_WIN_X64)/%.o)
 OBJ_WIN_X64_TIER2 = $(SRC_AMD64_TIER2:src/vec/c/amd64/%.cpp=$(OBJ_WIN_X64)/%.o)
 OBJ_WIN_X64_TIER3 = $(SRC_AMD64_TIER3:src/vec/c/amd64/%.cpp=$(OBJ_WIN_X64)/%.o)
+OBJ_FBSD_X64_TIER1 = $(SRC_AMD64_TIER1:src/vec/c/amd64/%.cpp=$(OBJ_FBSD_X64)/%.o)
+OBJ_FBSD_X64_TIER2 = $(SRC_AMD64_TIER2:src/vec/c/amd64/%.cpp=$(OBJ_FBSD_X64)/%.o)
+OBJ_FBSD_X64_TIER3 = $(SRC_AMD64_TIER3:src/vec/c/amd64/%.cpp=$(OBJ_FBSD_X64)/%.o)
 
 # Output files
 OUT_DIR_AARCH64 = build/libs/vec/shared/aarch64
@@ -96,6 +103,8 @@ SO_ARM  = $(OUT_DIR_AARCH64)/libvec.so
 SO_X64  = $(OUT_DIR_AMD64)/libvec.so
 DLL_WIN = $(OUT_DIR_WIN_X64)/vec.dll
 PDB_WIN = $(OUT_DIR_WIN_X64)/vec.pdb
+OUT_DIR_FREEBSD_AMD64 = build/libs/vec/freebsd/amd64
+SO_FBSD_X64 = $(OUT_DIR_FREEBSD_AMD64)/libvec.so
 
 # --- local: build for the current platform using the native compiler ---
 # On macOS, overrides CLANG/CLANG_LINK to use the system clang (SDK available natively).
@@ -127,6 +136,14 @@ else ifeq ($(shell uname -m),aarch64)
   local: LINUX_STRIP = strip --strip-unneeded
   local: LINUX_OBJCOPY = objcopy
   local: $(SO_ARM)
+else ifeq ($(shell uname -s),FreeBSD)
+  LOCAL_PLATFORM = freebsd-x64
+  LOCAL_OUTPUT   = $(SO_FBSD_X64)
+  local: CLANG = clang++
+  local: CXX_FBSD_X64 = $(CLANG) -Winline
+  local: FREEBSD_STRIP = strip --strip-unneeded
+  local: FREEBSD_OBJCOPY = objcopy
+  local: $(SO_FBSD_X64)
 else
   LOCAL_PLATFORM = linux-x64
   LOCAL_OUTPUT   = $(SO_X64)
@@ -147,7 +164,7 @@ endif
 
 # --- all: cross-compile all four targets (inside Docker) ---
 
-all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN)
+all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN) $(SO_FBSD_X64)
 
 # --- darwin-aarch64 ---
 
@@ -216,10 +233,27 @@ $(DLL_WIN): $(OBJ_WIN_X64_TIER1) $(OBJ_WIN_X64_TIER2) $(OBJ_WIN_X64_TIER3) | $(O
 	    echo "note: $(LLVM_PDBUTIL) not on PATH; skipping PDB sanity check"; \
 	fi
 
+# --- freebsd-x64 ---
+
+$(OBJ_FBSD_X64_TIER1): $(OBJ_FBSD_X64)/%.o: src/vec/c/amd64/%.cpp | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -march=$(MARCH_AMD64_TIER1) $(HEADERS) -c $< -o $@
+
+$(OBJ_FBSD_X64_TIER2): $(OBJ_FBSD_X64)/%.o: src/vec/c/amd64/%.cpp | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -march=$(MARCH_AMD64_TIER2) $(HEADERS) -c $< -o $@
+
+$(OBJ_FBSD_X64_TIER3): $(OBJ_FBSD_X64)/%.o: src/vec/c/amd64/%.cpp | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -march=$(MARCH_AMD64_TIER3) $(HEADERS) -c $< -o $@
+
+$(SO_FBSD_X64): $(OBJ_FBSD_X64_TIER1) $(OBJ_FBSD_X64_TIER2) $(OBJ_FBSD_X64_TIER3) | $(OUT_DIR_FREEBSD_AMD64)
+	$(CXX_FBSD_X64) -fuse-ld=lld -shared $^ -o $@
+	$(FREEBSD_OBJCOPY) --only-keep-debug $@ $@.debug
+	$(FREEBSD_STRIP) $@
+	$(FREEBSD_OBJCOPY) --add-gnu-debuglink=$@.debug $@
+
 # --- directories ---
 
-$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64):
+$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64) $(OBJ_FBSD_X64) $(OUT_DIR_FREEBSD_AMD64):
 	mkdir -p $@
 
 clean:
-	rm -rf build/obj build/libs/vec/shared
+	rm -rf build/obj build/libs/vec/shared build/libs/vec/freebsd
