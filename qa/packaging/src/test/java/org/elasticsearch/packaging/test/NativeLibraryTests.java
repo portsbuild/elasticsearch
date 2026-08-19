@@ -155,7 +155,7 @@ public class NativeLibraryTests extends PackagingTestCase {
 
             // On Linux and macOS (where native simdvec is supported), verify that libvec loaded and vec_caps > 0.
             // The vec_caps log line is emitted during NativeAccess initialization at node startup.
-            if (Platforms.LINUX || Platforms.DARWIN) {
+            if (Platforms.LINUX || Platforms.DARWIN || Platforms.FREEBSD) {
                 String logs = getElasticsearchLogs();
                 Matcher matcher = Pattern.compile("vec_caps=(\\d+)").matcher(logs);
                 assertTrue("Expected vec_caps=N log line indicating simdvec library loaded, but not found in logs", matcher.find());
