@@ -80,15 +80,16 @@ jobs:
           cd $GITHUB_WORKSPACE
           pwd
           ls -alh
-          su action -c 'rm -rf libs/entitlement/src/main26'
-          su action -c 'rm -rf libs/entitlement/src/main27'
-          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
-          ls -alh libs/entitlement/src
+          su action -c 'rm -rfv libs/entitlement/src/main26'
+          su action -c 'rm -rfv libs/entitlement/src/main27'
+          su action -c 'rm -rfv libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'ls -alh libs/entitlement/src'
 
       - name: Compile classes
         shell: freebsd {0}
         run: |
           cd $GITHUB_WORKSPACE
+          ls -alh libs/entitlement/src
           su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
 
       - name: Build vector library
