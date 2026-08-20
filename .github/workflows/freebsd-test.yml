@@ -73,7 +73,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           chown -R action:wheel .
 
-      - name: Compile classes
+      - name: Build and test
         shell: freebsd {0}
         run: |
           cd $GITHUB_WORKSPACE
@@ -83,35 +83,15 @@ jobs:
           su action -c 'ls -alh libs/entitlement/src'
           ls -alh libs/entitlement/src
           su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
-
-      - name: Build vector library
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
+          echo "Building vector library"
           su action -c 'cd libs/native/simdvec/ ; gmake local install'
           su action -c './gradlew copyLibzstd'
-
-      - name: Run ProcessLimits tests
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
+          echo "Running ProcessLimits tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.ProcessLimitsTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
           ls -alh build/libs/vec/freebsd/amd64/
-
-      - name: Run Preallocate tests
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
+          echo "Running Preallocate tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.PreallocateTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-
-      - name: Run remaining native access tests
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
+          echo "Running remaining native access tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-
-      - name: Run all tests
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
+          echo "Running all tests"
           su action -c './gradlew test "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
