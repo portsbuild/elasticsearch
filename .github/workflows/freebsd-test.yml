@@ -26,7 +26,7 @@ jobs:
       LOCAL_PQRS_BINARY: true
       NATIVE_BUILD: local
       COMMON_BUILD_PARAMS: '-D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -D"org.elasticsearch.nativeaccess.enableVectorLibrary=true"'
-      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
+      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -D"tests.es.node.processors=4" -D"tests.bwc.git_fetch_latest=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
     steps:
       - uses: actions/checkout@v7
 
