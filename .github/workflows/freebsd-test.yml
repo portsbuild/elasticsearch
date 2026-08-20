@@ -92,8 +92,7 @@ jobs:
         shell: freebsd {0}
         run: |
           cd $GITHUB_WORKSPACE
-          cd libs/native/simdvec/
-          gmake local install
+          su action -c 'cd libs/native/simdvec/ ; gmake local install'
           su action -c './gradlew copyLibzstd'
 
       - name: Run ProcessLimits tests
