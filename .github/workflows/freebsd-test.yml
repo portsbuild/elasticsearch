@@ -82,10 +82,12 @@ jobs:
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
           su action -c 'ls -alh libs/entitlement/src'
           ls -alh libs/entitlement/src
+          su action -c './gradlew copyLibzstd'
+          ls -alh libs/native/libraries/build/platform/freebsd-x64/
           su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
           echo "=== Building vector library"
           su action -c 'cd libs/simdvec/native/ ; gmake local install'
-          su action -c './gradlew copyLibzstd'
+          ls -alh libs/native/libraries/build/platform/freebsd-x64/
           echo "=== Running ProcessLimits tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.ProcessLimitsTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
           ls -alh build/libs/vec/freebsd/amd64/
