@@ -83,15 +83,15 @@ jobs:
           su action -c 'ls -alh libs/entitlement/src'
           ls -alh libs/entitlement/src
           su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
-          echo "Building vector library"
-          su action -c 'cd libs/native/simdvec/ ; gmake local install'
+          echo "=== Building vector library"
+          su action -c 'cd libs/simdvec/native/ ; gmake local install'
           su action -c './gradlew copyLibzstd'
-          echo "Running ProcessLimits tests"
+          echo "=== Running ProcessLimits tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.ProcessLimitsTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
           ls -alh build/libs/vec/freebsd/amd64/
-          echo "Running Preallocate tests"
+          echo "=== Running Preallocate tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.PreallocateTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-          echo "Running remaining native access tests"
+          echo "=== Running remaining native access tests"
           su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-          echo "Running all tests"
+          echo "=== Running all tests"
           su action -c './gradlew test "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
