@@ -41,7 +41,7 @@ jobs:
           envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_PQRS_BINARY NATIVE_BUILD COMMON_BUILD_PARAMS COMMON_TEST_PARAMS'
           usesh: true
           copyback: false
-          cache-after-prepare: true
+          cache-after-prepare: false
           prepare: |
             freebsd-version
             pwd
