@@ -55,7 +55,7 @@ jobs:
           mkdir -p /usr/local/etc/pkg/repos
           printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
           pkg update -f -q
-          pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf
+          pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf rust
 
       - name: Mount proc
         shell: freebsd {0}
