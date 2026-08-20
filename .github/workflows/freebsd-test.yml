@@ -78,9 +78,9 @@ jobs:
         shell: freebsd {0}
         run: |
           cd $GITHUB_WORKSPACE
-          rm -rf libs/entitlement/src/main26
-          rm -rf libs/entitlement/src/main27
-          rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26
+          su action -c 'rm -rf libs/entitlement/src/main26'
+          su action -c 'rm -rf libs/entitlement/src/main27'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
 
       - name: Compile classes
         shell: freebsd {0}
