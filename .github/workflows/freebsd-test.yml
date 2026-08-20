@@ -74,6 +74,13 @@ jobs:
           cd $GITHUB_WORKSPACE
           chown -R action:wheel .
 
+      - name: Remove JDK 26 and 27 classes
+        shell: freebsd {0}
+        run: |
+          rm -rf libs/entitlement/src/main26
+          rm -rf libs/entitlement/src/main27
+          rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26
+
       - name: Compile classes
         shell: freebsd {0}
         run: |
