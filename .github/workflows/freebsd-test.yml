@@ -26,7 +26,8 @@ jobs:
       LOCAL_PQRS_BINARY: true
       NATIVE_BUILD: local
       COMMON_BUILD_PARAMS: '-D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -D"org.elasticsearch.nativeaccess.enableVectorLibrary=true"'
-      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -D"tests.es.node.processors=4" -D"tests.bwc.git_fetch_latest=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=4"'
+      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -D"tests.es.node.processors=4" -D"tests.bwc.git_fetch_latest=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
+      ES_JAVA_OPTS: '-XX:ActiveProcessorCount=4'
     steps:
       - uses: actions/checkout@v7
 
@@ -38,7 +39,7 @@ jobs:
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_PQRS_BINARY NATIVE_BUILD COMMON_BUILD_PARAMS COMMON_TEST_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_PQRS_BINARY NATIVE_BUILD COMMON_BUILD_PARAMS COMMON_TEST_PARAMS ES_JAVA_OPTS'
           copyback: false
           cache-after-prepare: false
           prepare: |
@@ -69,7 +70,9 @@ jobs:
           pw user add -n action -m
           su action -c 'mkdir ~/.gradle'
           su action -c 'printf "org.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk21,/usr/local/openjdk25\n" > ~/.gradle/gradle.properties'
-          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\nexport LOCAL_VEC_BINARY_OS=freebsd\nLOCAL_PQRS_BINARY=true\nexport NATIVE_BUILD=local\nexport CI=false\n" >> ~/.profile'
+          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\n" >> ~/.profile'
+          su action -c 'printf "export LOCAL_VEC_BINARY_OS=freebsd\nLOCAL_PQRS_BINARY=true\nexport NATIVE_BUILD=local\nexport CI=false\n" >> ~/.profile'
+          su action -c 'printf "export ES_JAVA_OPTS=-XX:ActiveProcessorCount=4\n" >> ~/.profile'
           cd $GITHUB_WORKSPACE
           chown -R action:wheel .
 
