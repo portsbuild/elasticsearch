@@ -47,7 +47,7 @@ public class VectorSimilarityFunctionsTests extends ESTestCase {
 
         if (jdkVersion >= 21
             && ((arch.equals("aarch64") && (osName.startsWith("Mac") || osName.equals("Linux")))
-                || (arch.equals("amd64") && osName.equals("Linux")))) {
+                || (arch.equals("amd64") && (osName.equals("Linux") || osName.equals("FreeBSD"))))) {
             assertThat(vectorSimilarityFunctions, isPresent());
             return true;
         } else {
