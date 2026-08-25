@@ -10,6 +10,7 @@
 package org.elasticsearch.nativeaccess.jna;
 
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.nativeaccess.lib.FreebsdCLibrary;
 import org.elasticsearch.nativeaccess.lib.JavaLibrary;
 import org.elasticsearch.nativeaccess.lib.Kernel32Library;
 import org.elasticsearch.nativeaccess.lib.LinuxCLibrary;
@@ -42,6 +43,8 @@ public class JnaNativeLibraryProvider extends NativeLibraryProvider {
                 JnaLinuxCLibrary::new,
                 MacCLibrary.class,
                 JnaMacCLibrary::new,
+                FreebsdCLibrary.class,
+                JnaFreebsdCLibrary::new,
                 Kernel32Library.class,
                 JnaKernel32Library::new,
                 ZstdLibrary.class,
