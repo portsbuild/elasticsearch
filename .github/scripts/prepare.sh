@@ -10,6 +10,7 @@ mkdir ~/.gradle
   echo "org.gradle.console=plain"
   echo "org.gradle.caching=true"
   echo "org.gradle.daemon=false"
+  echo "tests.jvm.argline=\"--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8\""
 } > ~/.gradle/gradle.properties
 
 {
