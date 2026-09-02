@@ -1,0 +1,8 @@
+tests:
+  - class: org.elasticsearch.xpack.ml.**
+    issue: https://github.com/portsbuild/elasticsearch/
+  - class: org.elasticsearch.xpack.deprecation.MlDeprecationCheckerTests
+    issue: https://github.com/portsbuild/elasticsearch/
+  - class: org.elasticsearch.xpack.inference.**
+    issue: https://github.com/portsbuild/elasticsearch/
+
