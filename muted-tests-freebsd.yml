@@ -5,4 +5,6 @@ tests:
     issue: https://github.com/portsbuild/elasticsearch/
   - class: org.elasticsearch.xpack.inference.**
     issue: https://github.com/portsbuild/elasticsearch/
-
+  - class: org.elasticsearch.transport.netty4.SimpleNetty4TransportTests
+    method: testTimeoutPerConnection
+    issue: https://github.com/portsbuild/elasticsearch/
