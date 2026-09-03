@@ -15,7 +15,7 @@ mkdir ~/.gradle
 } > ~/.gradle/gradle.properties
 
 {
-  echo "export RUNTIME_JAVA_HOME=/usr/local/openjdk26 ; export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk26"
-  echo "export LOCAL_VEC_BINARY_OS=freebsd ; export LOCAL_ZSTD_BINARY=true ; export NATIVE_BUILD=local ;"
+  # echo "export RUNTIME_JAVA_HOME=/usr/local/openjdk26 ; export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk26"
+  # echo "export LOCAL_VEC_BINARY_OS=freebsd ; export LOCAL_ZSTD_BINARY=true ; export NATIVE_BUILD=local ;"
   echo 'export GRADLE_OPTS=${GRADLE_OPTS:+"$GRADLE_OPTS "}--enable-native-access=ALL-UNNAMED'
 } >> ~/.profile
