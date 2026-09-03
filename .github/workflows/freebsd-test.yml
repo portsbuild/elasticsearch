@@ -24,13 +24,13 @@ jobs:
       contents: read
     env:
       CI: false # Disabling CI for now
-      RUNTIME_JAVA_HOME: /usr/local/openjdk25
-      JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
+      RUNTIME_JAVA_HOME: /usr/local/openjdk26
+      JAVA_TOOLCHAIN_HOME: /usr/local/openjdk26
       LOCAL_VEC_BINARY_OS: freebsd
       LOCAL_ZSTD_BINARY: true
       NATIVE_BUILD: local
       VEC_NATIVE_BUILD: host # future use, see ES PR #157290
-      COMMON_BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=px-pack/license-tools/src/test/resources/ -Drun.license_type=trial -Dorg.elasticsearch.nativeaccess.enableVectorLibrary=true -Des.nativelibs.path=/usr/local/lib'
+      COMMON_BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib'
       COMMON_TEST_PARAMS: '-Dtests.haltonfailure=false -Dnode.processors=4 -Dtests.es.node.processors=4 -Dtests.bwc.git_fetch_latest=false -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8"'
     steps:
       - uses: actions/checkout@v7
@@ -56,7 +56,9 @@ jobs:
             mount -t procfs proc /proc
             java -version
             echo "=== Add dedicated action user"
-            pw user add -n action -m -L root
+            pw user add -n action -m -L root -u 666
+            kldload mac_portacl
+            sysctl security.mac.portacl.rules="uid:666:tcp:80,uid:666:tcp:443"
 
       - name: Show runner specs
         shell: freebsd {0}
@@ -81,7 +83,7 @@ jobs:
           mount -t procfs proc /proc
           mount -p
           echo "=== Purging sources < JDK21 && > JDK25"
-          su action -c 'rm -rfv libs/entitlement/src/main27'
+          su action -c 'rm -rf libs/entitlement/src/main27'
 
           echo "=== Running all tests"
-          su action -c "./gradlew -S test ${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"
+          su -m -c root action -c "./gradlew -S test ${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"
