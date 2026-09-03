@@ -31,7 +31,7 @@ jobs:
       NATIVE_BUILD: local
       VEC_NATIVE_BUILD: host # future use, see ES PR #157290
       COMMON_BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib'
-      COMMON_TEST_PARAMS: '-Dtests.haltonfailure=false -Dnode.processors=4 -Dtests.es.node.processors=4 -Dtests.bwc.git_fetch_latest=false -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8"'
+      COMMON_TEST_PARAMS: '-Dtests.haltonfailure=false -Dnode.processors=4 -Dtests.es.node.processors=4 -Dtests.bwc.git_fetch_latest=false -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=10"'
     steps:
       - uses: actions/checkout@v7
 
@@ -78,6 +78,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           sed -i '' "s/localhost.my.domain$/localhost.my.domain $(hostname)/" /etc/hosts
           chmod +x ./.github/scripts/prepare.sh
+          su action -c 'env'
           su action -c './.github/scripts/prepare.sh'
           chown -R action:wheel .
           mount -t procfs proc /proc
