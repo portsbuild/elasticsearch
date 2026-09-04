@@ -1,0 +1,98 @@
+name: FreeBSD Tests
+on:
+  push:
+    branches: [ "freebsd-tests" ]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/*.yml'
+  pull_request:
+    branches: [ "freebsd-*" ]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/*.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-freebsd:
+    if: github.repository == 'portsbuild/elasticsearch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CI: false # Disabling CI for now
+      RUNTIME_JAVA_HOME: /usr/local/openjdk25
+      JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
+      LOCAL_VEC_BINARY_OS: freebsd
+      LOCAL_ZSTD_BINARY: true
+      BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
+      TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
+      TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.tests.skipTestTimeoutPerConnection=true"'
+      CUSTOM_PARAMS: '-Dfreebsd.override.jdk=true -Dfreebsd.tests.skipTestTimeoutPerConnection=true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start VM
+        id: test-es-freebsd
+        uses: portsbuild-vm/freebsd-vm@main
+        with:
+          release: "14.4"
+          # arch: aarch64
+          mem: 11264
+          cpu: 4
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_ZSTD_BINARY BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          copyback: false
+          cache-after-prepare: true
+          prepare: |
+            echo "=== Install dependencies"
+            mkdir -p /usr/local/etc/pkg/repos
+            printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
+            pkg update -f -q
+            pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf
+            echo "=== Mount procfs"
+            mount -t procfs proc /proc
+            java -version
+            echo "=== Add dedicated action user"
+            pw user add -n action -m -L root -u 666
+            kldload mac_portacl
+            sysctl security.mac.portacl.rules="uid:666:tcp:80,uid:666:tcp:443"
+
+      - name: Show runner specs
+        shell: freebsd {0}
+        run: |
+          freebsd-version
+          sysctl hw.model
+          sysctl hw.ncpu
+          sysctl hw.physmem
+          sysctl hw.usermem
+          sysctl kern.smp.cores
+          sysctl kern.maxproc
+          sysctl kern.maxprocperuid
+
+      - name: Build and test
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          sed -i '' "s/localhost.my.domain$/localhost.my.domain $(hostname)/" /etc/hosts
+          chmod +x ./.github/scripts/prepare.sh
+          su action -c 'env'
+          su action -c './.github/scripts/prepare.sh'
+          chown -R action:wheel .
+          mount -t procfs proc /proc
+          mount -p
+          echo "=== Purging sources < JDK21 && > JDK25"
+          # su -c root action -c 'rm -rf libs/native/src/main20'
+          su action -c 'rm -rf libs/entitlement/src/main19'
+          su action -c 'rm -rf libs/entitlement/src/main20'
+          su action -c 'rm -rf libs/entitlement/src/main26'
+          su action -c 'rm -rf libs/entitlement/src/main27'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main18'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main19'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main20'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
+
+          echo "=== Running all tests"
+          su -c root -m action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"
