@@ -9,8 +9,8 @@
 
 package org.elasticsearch.nativeaccess;
 
+import org.elasticsearch.foreign.LibraryProvider;
 import org.elasticsearch.nativeaccess.lib.FreebsdCLibrary;
-import org.elasticsearch.nativeaccess.lib.NativeLibraryProvider;
 import org.elasticsearch.nativeaccess.lib.PosixCLibrary;
 
 public class FreebsdNativeAccess extends PosixNativeAccess {
@@ -23,9 +23,9 @@ public class FreebsdNativeAccess extends PosixNativeAccess {
     // Offset of st_size: 112 bytes
     // Offset of st_blocks: 120 bytes
     // Struct size: 224 bytes
-    FreebsdNativeAccess(NativeLibraryProvider libraryProvider) {
-        super("FreeBSD", libraryProvider, new PosixConstants(-1L, 10, 1, 6, 512));
-        this.bsdLibc = libraryProvider.getLibrary(FreebsdCLibrary.class);
+    FreebsdNativeAccess() {
+        super("FreeBSD", new PosixConstants(-1L, 10, 1, 6, 512));
+        this.bsdLibc = LibraryProvider.lookupLibrary(FreebsdCLibrary.class);
     }
 
     // sys/sys/resource.h
