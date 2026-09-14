@@ -126,5 +126,11 @@ nativeLibraryBuild {
     'build/libs/vec/shared/amd64/libvec.so'     : 'linux-x64/libvec.so',
   ]
 
-  hostCommand { outputDir -> ['make', 'local-install', "DEST=${outputDir.asFile}"] }
+  hostCommand {
+    if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+      outputDir -> ['gmake', 'local-install', "DEST=${outputDir.asFile}"]
+    } else {
+      outputDir -> ['make', 'local-install', "DEST=${outputDir.asFile}"]
+    }
+  }
 }
