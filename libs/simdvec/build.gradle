@@ -139,5 +139,11 @@ nativeLibraryBuild {
     'build/libs/vec/shared/windows-x64/vec.pdb'       : 'windows-x64/vec.pdb',
   ]
 
-  hostCommand { outputDir -> ['make', 'local-install', "DEST=${outputDir.asFile}"] }
+  hostCommand {
+    if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+      outputDir -> ['gmake', 'local-install', "DEST=${outputDir.asFile}"]
+    } else {
+      outputDir -> ['make', 'local-install', "DEST=${outputDir.asFile}"]
+    }
+  }
 }
