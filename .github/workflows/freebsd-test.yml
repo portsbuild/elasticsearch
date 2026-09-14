@@ -87,12 +87,13 @@ jobs:
           # su -c root action -c 'rm -rf libs/native/src/main20'
           # su action -c 'rm -rf libs/entitlement/src/main19'
           # su action -c 'rm -rf libs/entitlement/src/main20'
-          # su action -c 'rm -rf libs/entitlement/src/main26'
-          # su action -c 'rm -rf libs/entitlement/src/main27'
+          su action -c 'rm -rf libs/entitlement/src/main26'
+          su action -c 'rm -rf libs/entitlement/src/main27'
           # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main18'
           # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main19'
           # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main20'
-          # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
 
           echo "=== Running all tests"
           su -c root -m action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"
