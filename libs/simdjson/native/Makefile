@@ -79,6 +79,8 @@ LINUX_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
 LINUX_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
 DARWIN_DSYMUTIL = $(shell llvm-config$(LLVM_SUFFIX) --bindir)/dsymutil
 LLVM_PDBUTIL    = llvm-pdbutil$(LLVM_SUFFIX)
+FREEBSD_STRIP   = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
+FREEBSD_OBJCOPY = llvm-objcopy$(LLVM_SUFFIX)
 
 # Source files
 SRC = src/es_simdjson.cpp src/simdjson.cpp
@@ -88,6 +90,7 @@ OBJ_DARWIN  = build/obj/darwin-aarch64
 OBJ_LIN_ARM = build/obj/linux-aarch64
 OBJ_LIN_X64 = build/obj/linux-x64
 OBJ_WIN_X64 = build/obj/windows-x64
+OBJ_FBSD_X64 = build/obj/freebsd-x64
 
 # Output files
 OUT_DIR_AARCH64 = build/libs/simdjson/shared/aarch64
@@ -98,6 +101,8 @@ SO_ARM  = $(OUT_DIR_AARCH64)/libsimdjson.so
 SO_X64  = $(OUT_DIR_AMD64)/libsimdjson.so
 DLL_WIN = $(OUT_DIR_WIN_X64)/simdjson.dll
 PDB_WIN = $(OUT_DIR_WIN_X64)/simdjson.pdb
+OUT_DIR_FBSD_AMD64 = build/libs/simdjson/freebsd/amd64
+SO_FBSD_X64 = $(OUT_DIR_FBSD_AMD64)/libsimdjson.so
 
 .PHONY: all clean local local-install install verify-linux-abi
 
@@ -126,6 +131,13 @@ else ifeq ($(shell uname -m),aarch64)
   local: LINUX_STRIP = strip --strip-unneeded
   local: LINUX_OBJCOPY = objcopy
   local: $(SO_ARM)
+else ifeq ($(shell uname -s),FreeBSD)
+  LOCAL_PLATFORM = freebsd-x64
+  LOCAL_OUTPUT   = $(SO_FBSD_X64)
+  local: CXX_FBSD_X64 = $(CLANG_CXX)
+  local: FREEBSD_STRIP = strip --strip-unneeded
+  local: FREEBSD_OBJCOPY = objcopy
+  local: $(SO_FBSD_X64)
 else
   LOCAL_PLATFORM = linux-x64
   LOCAL_OUTPUT   = $(SO_X64)
@@ -151,7 +163,7 @@ install: local
 
 # --- all: cross-compile all four targets (inside Docker) ---
 
-all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN)
+all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN) $(SO_FBSD_X64)
 
 # --- darwin-aarch64 ---
 
@@ -213,9 +225,23 @@ $(DLL_WIN): $(OBJ_WIN_X64)/es_simdjson.o $(OBJ_WIN_X64)/simdjson.o | $(OUT_DIR_W
 	    echo "note: $(LLVM_PDBUTIL) not on PATH; skipping PDB sanity check"; \
 	fi
 
+# --- freebsd-x64 ---
+
+$(OBJ_FBSD_X64)/es_simdjson.o: src/es_simdjson.cpp src/simdjson.h | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -c $< -o $@
+
+$(OBJ_FBSD_X64)/simdjson.o: src/simdjson.cpp src/simdjson.h | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -c $< -o $@
+
+$(SO_FBSD_X64): $(OBJ_FBSD_X64)/es_simdjson.o $(OBJ_FBSD_X64)/simdjson.o | $(OUT_DIR_FBSD_AMD64)
+	$(CXX_FBSD_X64) -fuse-ld=lld -shared $^ -lstdc++ -lm -lgcc_s -lc -o $@
+	$(FREEBSD_OBJCOPY) --only-keep-debug $@ $@.debug
+	$(FREEBSD_STRIP) $@
+	$(FREEBSD_OBJCOPY) --add-gnu-debuglink=$@.debug $@
+
 # --- directories ---
 
-$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64):
+$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OBJ_FBSD_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64) $(OUT_DIR_FBSD_AMD64):
 	mkdir -p $@
 
 # Fail the build if Linux .so files require GLIBCXX > 3.4.25 or GLIBC > 2.28
