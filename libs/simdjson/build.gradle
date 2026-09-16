@@ -97,5 +97,12 @@ nativeLibraryBuild {
     'build/libs/simdjson/shared/windows-x64/simdjson.dll'  : 'windows-x64/simdjson.dll',
   ]
 
-  hostCommand { outputDir -> ['make', 'local-install', "DEST=${outputDir.asFile}"] }
+  def makecmd = 'make'
+  if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+    makecmd = 'gmake'
+  }
+
+  hostCommand {
+    outputDir -> [makecmd, 'local-install', "DEST=${outputDir.asFile}"]
+  }
 }
