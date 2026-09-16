@@ -26,8 +26,10 @@ jobs:
       CI: false # Disabling CI for now
       RUNTIME_JAVA_HOME: /usr/local/openjdk25
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
-      LOCAL_VEC_BINARY_OS: freebsd
       LOCAL_ZSTD_BINARY: true
+      VEC_NATIVE_BUILD: host
+      SIMDJSON_NATIVE_BUILD: host
+      CLANG_CXX: clang++
       BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
       TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
       TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.tests.skipTestTimeoutPerConnection=true"'
@@ -39,11 +41,11 @@ jobs:
         id: test-es-freebsd
         uses: portsbuild-vm/freebsd-vm@main
         with:
-          release: "14.4"
+          release: "14.5"
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_ZSTD_BINARY BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY VEC_NATIVE_BUILD SIMDJSON_NATIVE_BUILD CLANG_CXX BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
           cache-after-prepare: true
           prepare: |
@@ -94,6 +96,13 @@ jobs:
           # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main20'
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
+
+          echo "=== Building native libraries"
+          # su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
+          # su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
+          su -c root -m action -c "gmake -C libs/simdvec/native local-install DEST=../../native/libraries/build/platform"
+          su -c root -m action -c "gmake -C libs/simdjson/native local-install DEST=../../native/libraries/build/platform"
+          su -c root -m action -c "cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/"
 
           echo "=== Running all tests"
           su -c root -m action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"
