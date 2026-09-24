@@ -51,6 +51,7 @@ CLANG_LINK  = $(CLANG_CXX) --target=arm64-apple-macos14 -fuse-ld=lld \
                 -nostdlib -Wl,-undefined,dynamic_lookup
 CLANG_RESOURCE_ARM = $(shell $(CLANG_CXX) --target=aarch64-linux-gnu -print-resource-dir)
 CLANG_RESOURCE_X64 = $(shell $(CLANG_CXX) --target=x86_64-linux-gnu -print-resource-dir)
+CLANG_RESOURCE_FBSD_X64 = $(shell $(CLANG_CXX) --target=x86_64-freebsd-unknown -print-resource-dir)
 
 # -nostdinc++ keeps clang from picking up libstdc++-14; include paths below
 # pair clang intrinsics with GCC 8 libstdc++ (see Dockerfile.cross-toolchain).
@@ -69,8 +70,12 @@ LINUX_LDFLAGS_ARM = -L/usr/lib/gcc-cross/aarch64-linux-gnu/$(LINUX_STDCXX_MAJOR)
 LINUX_LDFLAGS_X64 = -L/usr/lib/gcc-cross/x86_64-linux-gnu/$(LINUX_STDCXX_MAJOR) \
   -L/usr/x86_64-linux-gnu/lib
 
+FREEBSD_CXXFLAGS_X64 = -nostdinc++ \
+  -isystem $(CLANG_RESOURCE_FBSD_X64)/include
+
 CXX_ARM     = $(CLANG_CXX) --target=aarch64-linux-gnu $(LINUX_CXXFLAGS_ARM)
 CXX_X64     = $(CLANG_CXX) --target=x86_64-linux-gnu $(LINUX_CXXFLAGS_X64)
+CXX_FBSD_X64 = $(CLANG_CXX) --target=x86_64-unknown-freebsd $(FREEBSD_CXXFLAGS_X64)
 CXX_WIN     = x86_64-w64-mingw32-clang++
 
 # Strip and debug-info commands per target platform
@@ -96,12 +101,12 @@ OBJ_FBSD_X64 = build/obj/freebsd-x64
 OUT_DIR_AARCH64 = build/libs/simdjson/shared/aarch64
 OUT_DIR_AMD64   = build/libs/simdjson/shared/amd64
 OUT_DIR_WIN_X64 = build/libs/simdjson/shared/windows-x64
+OUT_DIR_FBSD_AMD64 = build/libs/simdjson/shared/freebsd-x64
 DYLIB   = $(OUT_DIR_AARCH64)/libsimdjson.dylib
 SO_ARM  = $(OUT_DIR_AARCH64)/libsimdjson.so
 SO_X64  = $(OUT_DIR_AMD64)/libsimdjson.so
 DLL_WIN = $(OUT_DIR_WIN_X64)/simdjson.dll
 PDB_WIN = $(OUT_DIR_WIN_X64)/simdjson.pdb
-OUT_DIR_FBSD_AMD64 = build/libs/simdjson/freebsd/amd64
 SO_FBSD_X64 = $(OUT_DIR_FBSD_AMD64)/libsimdjson.so
 
 .PHONY: all clean local local-install install verify-linux-abi
