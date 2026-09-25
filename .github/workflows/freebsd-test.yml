@@ -98,8 +98,8 @@ jobs:
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
 
           echo "=== Building native libraries"
-          # su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
-          # su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
+          su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
+          su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
           su -c root -m action -c "gmake -C libs/simdvec/native local-install DEST=../../native/libraries/build/platform"
           su -c root -m action -c "gmake -C libs/simdjson/native local-install DEST=../../native/libraries/build/platform"
           su -c root -m action -c "cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/"
