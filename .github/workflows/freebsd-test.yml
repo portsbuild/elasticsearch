@@ -26,15 +26,14 @@ jobs:
       CI: false # Disabling CI for now
       RUNTIME_JAVA_HOME: /usr/local/openjdk25
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
-      LOCAL_VEC_BINARY_OS: freebsd
-      LOCAL_PQRS_BINARY: true
-      NATIVE_BUILD: local
-      COMMON_BUILD_PARAMS: '-D"build.snapshot=false" -D"license.key=public.key" -D"run.license_type=trial" -D"org.elasticsearch.nativeaccess.enableVectorLibrary=true"'
-      COMMON_TEST_PARAMS: '-D"tests.haltonfailure=false" -D"tests.es.node.processors=4" -D"tests.bwc.git_fetch_latest=false" -Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"'
-      ES_JAVA_OPTS: '-XX:ActiveProcessorCount=4'
-
-      # -Dtests.testfeatures.enabled=true -Des.nativelibs.path="
-      # -add-opens=java.base/java.security.cert=ALL-UNNAMED --add-opens=java.base/java.nio.channels=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/javax.net.ssl=ALL-UNNAMED --add-opens=java.base/java.nio.file=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.management/java.lang.management=ALL-UNNAMED
+      LOCAL_ZSTD_BINARY: true
+      VEC_NATIVE_BUILD: host
+      SIMDJSON_NATIVE_BUILD: host
+      CLANG_CXX: clang++
+      BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
+      TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
+      TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=8 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.tests.skipTestTimeoutPerConnection=true"'
+      CUSTOM_PARAMS: '-Dfreebsd.override.jdk=true -Dfreebsd.tests.skipTestTimeoutPerConnection=true'
     steps:
       - uses: actions/checkout@v7
 
@@ -42,68 +41,68 @@ jobs:
         id: test-es-freebsd
         uses: portsbuild-vm/freebsd-vm@main
         with:
-          release: "14.4"
+          release: "14.5"
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_PQRS_BINARY NATIVE_BUILD COMMON_BUILD_PARAMS COMMON_TEST_PARAMS ES_JAVA_OPTS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY VEC_NATIVE_BUILD SIMDJSON_NATIVE_BUILD CLANG_CXX BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
-          cache-after-prepare: false
+          cache-after-prepare: true
           prepare: |
-            freebsd-version
-            pwd
-            sysctl hw.model
-            sysctl hw.ncpu
-            sysctl hw.physmem
-            sysctl hw.usermem
+            echo "=== Install dependencies"
+            mkdir -p /usr/local/etc/pkg/repos
+            printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
+            pkg update -f -q
+            pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf
+            echo "=== Mount procfs"
+            mount -t procfs proc /proc
+            java -version
+            echo "=== Add dedicated action user"
+            pw user add -n action -m -L root -u 666
+            kldload mac_portacl
+            sysctl security.mac.portacl.rules="uid:666:tcp:80,uid:666:tcp:443"
 
-      - name: Install dependencies
+      - name: Show runner specs
         shell: freebsd {0}
         run: |
-          mkdir -p /usr/local/etc/pkg/repos
-          printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
-          pkg update -f -q
-          pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf rust
-
-      - name: Mount proc
-        shell: freebsd {0}
-        run: |
-          mount -t procfs proc /proc
-          java -version
-
-      - name: Add dedicated action user
-        shell: freebsd {0}
-        run: |
-          pw user add -n action -m
-          su action -c 'mkdir ~/.gradle'
-          su action -c 'printf "org.gradle.java.installations.paths=/usr/local/openjdk17,/usr/local/openjdk21,/usr/local/openjdk25\n" > ~/.gradle/gradle.properties'
-          su action -c 'printf "export RUNTIME_JAVA_HOME=/usr/local/openjdk25\nexport JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25\n" >> ~/.profile'
-          su action -c 'printf "export LOCAL_VEC_BINARY_OS=freebsd\nLOCAL_PQRS_BINARY=true\nexport NATIVE_BUILD=local\nexport CI=false\n" >> ~/.profile'
-          su action -c 'printf "export ES_JAVA_OPTS=-XX:ActiveProcessorCount=4\n" >> ~/.profile'
-          cd $GITHUB_WORKSPACE
-          chown -R action:wheel .
+          freebsd-version
+          sysctl hw.model
+          sysctl hw.ncpu
+          sysctl hw.physmem
+          sysctl hw.usermem
+          sysctl kern.smp.cores
+          sysctl kern.maxproc
+          sysctl kern.maxprocperuid
 
       - name: Build and test
         shell: freebsd {0}
         run: |
           cd $GITHUB_WORKSPACE
+          sed -i '' "s/localhost.my.domain$/localhost.my.domain $(hostname)/" /etc/hosts
+          chmod +x ./.github/scripts/prepare.sh
+          su action -c 'env'
+          su action -c './.github/scripts/prepare.sh'
+          chown -R action:wheel .
+          mount -t procfs proc /proc
+          mount -p
+          echo "=== Purging sources < JDK21 && > JDK25"
+          # su -c root action -c 'rm -rf libs/native/src/main20'
+          # su action -c 'rm -rf libs/entitlement/src/main19'
+          # su action -c 'rm -rf libs/entitlement/src/main20'
           su action -c 'rm -rf libs/entitlement/src/main26'
           su action -c 'rm -rf libs/entitlement/src/main27'
+          # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main18'
+          # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main19'
+          # su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main20'
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
-          su action -c 'ls -alh libs/entitlement/src'
-          ls -alh libs/entitlement/src
-          su action -c './gradlew copyLibzstd'
-          ls -alh libs/native/libraries/build/platform/freebsd-x64/
-          su action -c './gradlew classes "${COMMON_BUILD_PARAMS}"'
-          echo "=== Building vector library"
-          su action -c 'cd libs/simdvec/native/ ; gmake local install'
-          ls -alh libs/native/libraries/build/platform/freebsd-x64/
-          echo "=== Running ProcessLimits tests"
-          su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.ProcessLimitsTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-          ls -alh build/libs/vec/freebsd/amd64/
-          echo "=== Running Preallocate tests"
-          su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.PreallocateTests.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
-          echo "=== Running remaining native access tests"
-          su action -c './gradlew ":libs:native:test" --tests "org.elasticsearch.nativeaccess.*" "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
+
+          echo "=== Building native libraries"
+          su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
+          su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
+          su -c root -m action -c "gmake -C libs/simdvec/native local-install DEST=../../native/libraries/build/platform"
+          su -c root -m action -c "gmake -C libs/simdjson/native local-install DEST=../../native/libraries/build/platform"
+          su -c root -m action -c "cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/"
+
           echo "=== Running all tests"
-          su action -c './gradlew test "${COMMON_BUILD_PARAMS} ${COMMON_TEST_PARAMS}"'
+          su -c root -m action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"

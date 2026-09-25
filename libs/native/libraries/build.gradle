@@ -97,23 +97,56 @@ dependencies {
   }
 }
 
+// todo: only run when testing:
+/*tasks.named('test').configure {
+  dependsOn ':libs:native:native-libraries:extractLibs'
+  // jvmArgs '--add-modules=jdk.incubator.vector', '--enable-native-access=ALL-UNNAMED'
+  // The benchmark bodies run in JMH's forked VMs; `es.nativelibs.path` needs to be passed as
+  // a system property so it get passed down to the fork.
+  // systemProperty 'es.nativelibs.path', TestUtil.getTestLibraryPath(file('../native/libraries/build/platform/').toString())
+}*/
+/*def buildLibVec = tasks.register('buildLibVec', Exec) {
+  workingDir = file('../../simdvec/native')
+  commandLine './gradlew', 'buildSharedLibrary'
+  outputs.dir(file("../../simdvec/native/build/libs/vec/shared/amd64/"))
+}*/
+
 def extractLibs = tasks.register('extractLibs', Copy) {
-  into layout.buildDirectory.dir('platform')
-  from configurations.libs
-  from configurations.resolvedNativeLibraries
-  // TODO: fix architecture in uploaded libs
-  filesMatching("*-x86-64/*") {
-    it.path = it.path.replace("x86-64", "x64")
-  }
-  filesMatching("win32*/*") {
-    it.path = it.path.replace("win32", "windows")
-  }
-  includeEmptyDirs = false
-  filePermissions {
-    unix("644")
-  }
-  dirPermissions {
-    unix("755")
+  if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+    into layout.buildDirectory.dir('platform')
+    from('/usr/local/lib') {
+      include 'libzstd.so'
+      into 'freebsd-x64'
+    }
+    // todo: maybe here?
+    /*tasks.named('test').configure {
+
+    }*/
+   /*from(buildLibVec) {
+      include 'libvec.so'
+      into 'freebsd-x64'
+    }*/
+    filePermissions {
+      unix("755")
+    }
+  } else {
+    into layout.buildDirectory.dir('platform')
+    from configurations.libs
+    from configurations.resolvedNativeLibraries
+    // TODO: fix architecture in uploaded libs
+    filesMatching("*-x86-64/*") {
+      it.path = it.path.replace("x86-64", "x64")
+    }
+    filesMatching("win32*/*") {
+      it.path = it.path.replace("win32", "windows")
+    }
+    includeEmptyDirs = false
+    filePermissions {
+      unix("644")
+    }
+    dirPermissions {
+      unix("755")
+    }
   }
 }
 

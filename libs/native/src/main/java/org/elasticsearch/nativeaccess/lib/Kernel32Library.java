@@ -34,7 +34,7 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
 @LibrarySpecification(
     name = "kernel32",
     system = true,
-    unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.DARWIN_X64, Platform.DARWIN_AARCH64 }
+    unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.DARWIN_X64, Platform.DARWIN_AARCH64, Platform.FREEBSD_X64 }
 )
 public abstract class Kernel32Library {
 

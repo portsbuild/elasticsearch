@@ -115,20 +115,19 @@ A distribution archive will be created in the following folder:
 distribution/archives/freebsd-tar/build/distributions/elasticsearch-8.19.21-freebsd-x86_64.tar.gz
 ```
 
-### Building the vector library
+### Building the simdvec (vector) library
 
 Compiling the vector library is straightforward. From the root of the repository:
 
 ```shell
-export LOCAL_ZSTD_BINARY=true
-export LOCAL_VEC_BINARY_OS=true
-./gradlew buildSharedLibrary
+export VEC_NATIVE_BUILD=host
+./gradlew :libs:simdvec:buildNativeLibrary
 ```
 
 Next, copy `libvec.so` to `/usr/local/lib`:
 
 ```shell
-cp libs/native/libraries/build/platform/freebsd-x64/libvec.so /usr/local/lib/
+cp libs/simdvec/build/native-libs/freebsd-x64/libvec.so /usr/local/lib/
 ```
 
 Finally, set `enableVectorLibrary` to true in `jvm.options` and (re)start Elasticsearch:
@@ -141,13 +140,29 @@ Finally, set `enableVectorLibrary` to true in `jvm.options` and (re)start Elasti
 service elasticsearch (re)start
 ```
 
+### Building the simdjson library
+
+Possible alternative is to install `devel/simdjson` from the Ports tree, but this has not been tested yet.
+
+```shell
+export SIMDJSON_NATIVE_BUILD=host
+./gradlew :libs:simdjson:buildNativeLibrary
+```
+
+Next, copy `libsimdjson.so` to `/usr/local/lib`:
+
+```shell
+cp libs/simdjson/build/native-libs/freebsd-x64/libsimdjson.so /usr/local/lib/
+```
+
 ## Testing
 
 To run the full suite of tests, switch over to the desired version branch and type:
 
 ```shell
 export LOCAL_ZSTD_BINARY=true
-export LOCAL_VEC_BINARY_OS=true
+export VEC_NATIVE_BUILD=host
+export SIMDJSON_NATIVE_BUILD=host
 export RUNTIME_JAVA_HOME=/usr/local/openjdk25
 export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25
 ./gradlew test -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib \

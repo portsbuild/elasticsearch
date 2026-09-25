@@ -58,8 +58,8 @@ DARWIN_STRIP    = llvm-strip$(LLVM_SUFFIX) --strip-debug
 LINUX_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
 LINUX_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
 DARWIN_DSYMUTIL = $(shell llvm-config$(LLVM_SUFFIX) --bindir)/dsymutil
-FREEBSD_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
-FREEBSD_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
+FREEBSD_STRIP   = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
+FREEBSD_OBJCOPY = llvm-objcopy$(LLVM_SUFFIX)
 
 # Sources split by tier
 SRC_AARCH64_TIER1 = $(filter-out %_2.cpp, $(wildcard src/vec/c/aarch64/*.cpp))
@@ -120,8 +120,7 @@ else ifeq ($(shell uname -m),aarch64)
 else ifeq ($(shell uname -s),FreeBSD)
   LOCAL_PLATFORM = freebsd-x64
   LOCAL_OUTPUT   = $(SO_FBSD_X64)
-  local: CLANG = clang++
-  local: CXX_FBSD_X64 = $(CLANG) -Winline
+  local: CXX_FBSD_X64 = $(CLANG_CXX) -Winline
   local: FREEBSD_STRIP = strip --strip-unneeded
   local: FREEBSD_OBJCOPY = objcopy
   local: $(SO_FBSD_X64)

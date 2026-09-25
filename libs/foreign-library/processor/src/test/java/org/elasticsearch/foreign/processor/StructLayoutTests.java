@@ -281,6 +281,7 @@ public class StructLayoutTests extends ProcessorTestCase {
                 interface Stat64 {
                     @Offset(value = 48, platforms = {Platform.LINUX_X64, Platform.LINUX_AARCH64,
                                                      Platform.DARWIN_X64, Platform.DARWIN_AARCH64})
+                    @Offset(value = 112, platforms = {Platform.FREEBSD_X64})
                     long stSize();
                     void stSize(long v);
                 }
@@ -480,6 +481,7 @@ public class StructLayoutTests extends ProcessorTestCase {
                 @StructSize(200)
                 interface Stat {
                     @Offset(value = 48, platforms = {Platform.LINUX_X64, Platform.LINUX_AARCH64})
+                    @Offset(value = 112, platforms = {Platform.FREEBSD_X64})
                     @Offset(96)
                     long stSize();
                     void stSize(long v);
@@ -501,7 +503,8 @@ public class StructLayoutTests extends ProcessorTestCase {
 
         Platform current = Platform.current();
         boolean isLinux = current == Platform.LINUX_X64 || current == Platform.LINUX_AARCH64;
-        long expectedOffset = isLinux ? 48L : 96L;
+        boolean isFreeBSD = current == Platform.FREEBSD_X64;
+        long expectedOffset = isLinux ? 48L : isFreeBSD ? 112L : 96L;
 
         assertEquals("Sparse per-platform layout byteSize() must equal @StructSize", 200L, layout.byteSize());
         assertEquals(
@@ -664,6 +667,7 @@ public class StructLayoutTests extends ProcessorTestCase {
                 @StructSpecification(sparse = true)
                 @StructSize(value = 144, platforms = {Platform.LINUX_X64, Platform.LINUX_AARCH64})
                 @StructSize(value = 152, platforms = {Platform.DARWIN_X64, Platform.DARWIN_AARCH64})
+                @StructSize(value = 224, platforms = {Platform.FREEBSD_X64})
                 interface Stat {
                     @Sizeof
                     int sizeof();
@@ -693,7 +697,8 @@ public class StructLayoutTests extends ProcessorTestCase {
 
         Platform current = Platform.current();
         boolean isLinux = current == Platform.LINUX_X64 || current == Platform.LINUX_AARCH64;
-        int expectedSize = isLinux ? 144 : 152;
+        boolean isFreeBSD = current == Platform.FREEBSD_X64;
+        int expectedSize = isLinux ? 144 : isFreeBSD ? 224 : 152;
         assertEquals("sizeof() must equal @StructSize resolved for Platform.current()", expectedSize, size);
     }
 

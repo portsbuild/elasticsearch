@@ -51,6 +51,7 @@ CLANG_LINK  = $(CLANG_CXX) --target=arm64-apple-macos14 -fuse-ld=lld \
                 -nostdlib -Wl,-undefined,dynamic_lookup
 CLANG_RESOURCE_ARM = $(shell $(CLANG_CXX) --target=aarch64-linux-gnu -print-resource-dir)
 CLANG_RESOURCE_X64 = $(shell $(CLANG_CXX) --target=x86_64-linux-gnu -print-resource-dir)
+CLANG_RESOURCE_FBSD_X64 = $(shell $(CLANG_CXX) --target=x86_64-freebsd-unknown -print-resource-dir)
 
 # -nostdinc++ keeps clang from picking up libstdc++-14; include paths below
 # pair clang intrinsics with GCC 8 libstdc++ (see Dockerfile.cross-toolchain).
@@ -69,8 +70,12 @@ LINUX_LDFLAGS_ARM = -L/usr/lib/gcc-cross/aarch64-linux-gnu/$(LINUX_STDCXX_MAJOR)
 LINUX_LDFLAGS_X64 = -L/usr/lib/gcc-cross/x86_64-linux-gnu/$(LINUX_STDCXX_MAJOR) \
   -L/usr/x86_64-linux-gnu/lib
 
+FREEBSD_CXXFLAGS_X64 = -nostdinc++ \
+  -isystem $(CLANG_RESOURCE_FBSD_X64)/include
+
 CXX_ARM     = $(CLANG_CXX) --target=aarch64-linux-gnu $(LINUX_CXXFLAGS_ARM)
 CXX_X64     = $(CLANG_CXX) --target=x86_64-linux-gnu $(LINUX_CXXFLAGS_X64)
+CXX_FBSD_X64 = $(CLANG_CXX) --target=x86_64-unknown-freebsd $(FREEBSD_CXXFLAGS_X64)
 CXX_WIN     = x86_64-w64-mingw32-clang++
 
 # Strip and debug-info commands per target platform
@@ -79,6 +84,8 @@ LINUX_STRIP     = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
 LINUX_OBJCOPY   = llvm-objcopy$(LLVM_SUFFIX)
 DARWIN_DSYMUTIL = $(shell llvm-config$(LLVM_SUFFIX) --bindir)/dsymutil
 LLVM_PDBUTIL    = llvm-pdbutil$(LLVM_SUFFIX)
+FREEBSD_STRIP   = llvm-strip$(LLVM_SUFFIX) --strip-unneeded
+FREEBSD_OBJCOPY = llvm-objcopy$(LLVM_SUFFIX)
 
 # Source files
 SRC = src/es_simdjson.cpp src/simdjson.cpp
@@ -88,16 +95,19 @@ OBJ_DARWIN  = build/obj/darwin-aarch64
 OBJ_LIN_ARM = build/obj/linux-aarch64
 OBJ_LIN_X64 = build/obj/linux-x64
 OBJ_WIN_X64 = build/obj/windows-x64
+OBJ_FBSD_X64 = build/obj/freebsd-x64
 
 # Output files
 OUT_DIR_AARCH64 = build/libs/simdjson/shared/aarch64
 OUT_DIR_AMD64   = build/libs/simdjson/shared/amd64
 OUT_DIR_WIN_X64 = build/libs/simdjson/shared/windows-x64
+OUT_DIR_FBSD_AMD64 = build/libs/simdjson/shared/freebsd-x64
 DYLIB   = $(OUT_DIR_AARCH64)/libsimdjson.dylib
 SO_ARM  = $(OUT_DIR_AARCH64)/libsimdjson.so
 SO_X64  = $(OUT_DIR_AMD64)/libsimdjson.so
 DLL_WIN = $(OUT_DIR_WIN_X64)/simdjson.dll
 PDB_WIN = $(OUT_DIR_WIN_X64)/simdjson.pdb
+SO_FBSD_X64 = $(OUT_DIR_FBSD_AMD64)/libsimdjson.so
 
 .PHONY: all clean local local-install install verify-linux-abi
 
@@ -126,6 +136,13 @@ else ifeq ($(shell uname -m),aarch64)
   local: LINUX_STRIP = strip --strip-unneeded
   local: LINUX_OBJCOPY = objcopy
   local: $(SO_ARM)
+else ifeq ($(shell uname -s),FreeBSD)
+  LOCAL_PLATFORM = freebsd-x64
+  LOCAL_OUTPUT   = $(SO_FBSD_X64)
+  local: CXX_FBSD_X64 = $(CLANG_CXX)
+  local: FREEBSD_STRIP = strip --strip-unneeded
+  local: FREEBSD_OBJCOPY = objcopy
+  local: $(SO_FBSD_X64)
 else
   LOCAL_PLATFORM = linux-x64
   LOCAL_OUTPUT   = $(SO_X64)
@@ -151,7 +168,7 @@ install: local
 
 # --- all: cross-compile all four targets (inside Docker) ---
 
-all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN)
+all: $(DYLIB) $(SO_ARM) $(SO_X64) $(DLL_WIN) $(SO_FBSD_X64)
 
 # --- darwin-aarch64 ---
 
@@ -213,9 +230,23 @@ $(DLL_WIN): $(OBJ_WIN_X64)/es_simdjson.o $(OBJ_WIN_X64)/simdjson.o | $(OUT_DIR_W
 	    echo "note: $(LLVM_PDBUTIL) not on PATH; skipping PDB sanity check"; \
 	fi
 
+# --- freebsd-x64 ---
+
+$(OBJ_FBSD_X64)/es_simdjson.o: src/es_simdjson.cpp src/simdjson.h | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -c $< -o $@
+
+$(OBJ_FBSD_X64)/simdjson.o: src/simdjson.cpp src/simdjson.h | $(OBJ_FBSD_X64)
+	$(CXX_FBSD_X64) $(CXXFLAGS) -c $< -o $@
+
+$(SO_FBSD_X64): $(OBJ_FBSD_X64)/es_simdjson.o $(OBJ_FBSD_X64)/simdjson.o | $(OUT_DIR_FBSD_AMD64)
+	$(CXX_FBSD_X64) -fuse-ld=lld -shared $^ -lstdc++ -lm -lgcc_s -lc -o $@
+	$(FREEBSD_OBJCOPY) --only-keep-debug $@ $@.debug
+	$(FREEBSD_STRIP) $@
+	$(FREEBSD_OBJCOPY) --add-gnu-debuglink=$@.debug $@
+
 # --- directories ---
 
-$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64):
+$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_WIN_X64) $(OBJ_FBSD_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_WIN_X64) $(OUT_DIR_FBSD_AMD64):
 	mkdir -p $@
 
 # Fail the build if Linux .so files require GLIBCXX > 3.4.25 or GLIBC > 2.28

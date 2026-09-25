@@ -62,7 +62,7 @@ public class BuildNativeLibraryTaskTests {
     @Test
     public void testHostPlatformShapeAndConsistency() {
         String platform = BuildNativeLibraryTask.hostPlatform();
-        assertTrue("unexpected host platform: " + platform, platform.matches("^(darwin|linux|windows)-(x64|aarch64)$"));
+        assertTrue("unexpected host platform: " + platform, platform.matches("^(darwin|linux|windows|freebsd)-(x64|aarch64)$"));
         assertEquals(OS.current().javaOsReference + "-" + Architecture.current().javaClassifier, platform);
     }
 

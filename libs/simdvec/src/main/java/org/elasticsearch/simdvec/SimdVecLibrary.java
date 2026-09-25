@@ -144,7 +144,8 @@ public abstract class SimdVecLibrary {
     public static boolean isNativeVectorLibSupported() {
         var supportedPlatform = Platform.current().equals(Platform.DARWIN_AARCH64)
             || Platform.current().equals(Platform.LINUX_AARCH64)
-            || Platform.current().equals(Platform.LINUX_X64);
+            || Platform.current().equals(Platform.LINUX_X64)
+            || Platform.current().equals(Platform.FREEBSD_X64);
         return Runtime.version().feature() >= 22 && supportedPlatform && checkEnableSystemProperty();
     }
 
