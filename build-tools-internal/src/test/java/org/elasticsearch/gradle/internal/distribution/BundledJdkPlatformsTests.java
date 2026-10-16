@@ -44,6 +44,11 @@ public class BundledJdkPlatformsTests {
     }
 
     @Test
+    public void freebsdSupportsX64Only() {
+        assertEquals(List.of("x64"), BundledJdkPlatforms.architecturesFor("freebsd", 25));
+    }
+
+    @Test
     public void unknownPlatformIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> BundledJdkPlatforms.architecturesFor("solaris", 27));
     }
