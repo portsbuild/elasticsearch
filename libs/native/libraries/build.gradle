@@ -91,6 +91,12 @@ def extractLibs = tasks.register('extractLibs', Copy) {
   filesMatching("win32*/*") {
     it.path = it.path.replace("win32", "windows")
   }
+  if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+    from('/usr/local/lib') {
+      include 'libzstd.so'
+      into 'freebsd-x64'
+    }
+  }
   includeEmptyDirs = false
   filePermissions {
     unix("644")
