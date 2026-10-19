@@ -39,7 +39,7 @@ jobs:
         id: test-es-freebsd
         uses: portsbuild-vm/freebsd-vm@main
         with:
-          release: "14.4"
+          release: "14.5"
           # arch: aarch64
           mem: 11264
           cpu: 4
@@ -87,6 +87,7 @@ jobs:
           su action -c 'rm -rf libs/entitlement/src/main26'
           su action -c 'rm -rf libs/entitlement/src/main27'
           su action -c 'libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'libs/entitlement/qa/entitlement-test-plugin/src/main27'
 
           echo "=== Running all tests"
           su -m -c root action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"
