@@ -466,7 +466,14 @@ public class SearchQueryThenFetchAsyncAction extends AbstractSearchAsyncAction<S
     ) {
         final PointInTimeBuilder pointInTimeBuilder = request.pointInTimeBuilder();
         if (pointInTimeBuilder != null) {
-            return request.pointInTimeBuilder().getSearchContextId(namedWriteableRegistry).contains(contextId);
+            try {
+                return request.pointInTimeBuilder().getSearchContextId(namedWriteableRegistry).contains(contextId);
+            } catch (IllegalArgumentException e) {
+                // Can occur when the PIT was encoded by a coordinator running a newer version than this data node.
+                // Since the PIT cannot be decoded, membership cannot be determined, so return true as the
+                // conservative fallback.
+                return true;
+            }
         } else {
             return false;
         }
@@ -574,7 +581,12 @@ public class SearchQueryThenFetchAsyncAction extends AbstractSearchAsyncAction<S
                                     onShardResult(q);
                                 }
                                 case null, default -> {
-                                    assert false : "impossible [" + response.results[i] + "]";
+                                    var e = new IllegalStateException("data node returned unexpected result for shard [" + s.shardId + "]");
+                                    logger.error(
+                                        "data node produced unexpected result[" + response.results[i] + "] for shard [" + s.shardId + "]",
+                                        e
+                                    );
+                                    onShardFailure(shardIdx, target, shardIterators[shardIdx], e);
                                 }
                             }
                         }
@@ -950,7 +962,7 @@ public class SearchQueryThenFetchAsyncAction extends AbstractSearchAsyncAction<S
             for (int i = 0; i < resultCount; i++) {
                 var result = queryPhaseResultConsumer.results.get(i);
                 if (result == null) {
-                    NodeQueryResponse.writePerShardException(out, failures.remove(i));
+                    NodeQueryResponse.writePerShardException(out, shardFailureOrUnknown(i));
                 } else {
                     // free context id and remove it from the result right away in case we don't need it anymore
                     maybeFreeContext(result, relevantShardIndices, namedWriteableRegistry);
@@ -968,7 +980,7 @@ public class SearchQueryThenFetchAsyncAction extends AbstractSearchAsyncAction<S
             for (int i = 0; i < resultCount; i++) {
                 var result = queryPhaseResultConsumer.results.get(i);
                 if (result == null) {
-                    NodeQueryResponse.writePerShardException(out, failures.remove(i));
+                    NodeQueryResponse.writePerShardException(out, shardFailureOrUnknown(i));
                 } else {
                     NodeQueryResponse.writePerShardResult(out, result);
                 }
@@ -976,6 +988,17 @@ public class SearchQueryThenFetchAsyncAction extends AbstractSearchAsyncAction<S
             out.writeBoolean(true); // does have a reduction failure
             out.writeException(reductionFailure);
             releaseAllResultsContexts();
+        }
+
+        private Exception shardFailureOrUnknown(int localIndex) {
+            Exception failure = failures.remove(localIndex);
+            if (failure == null) {
+                logger.error("data node produced null failure for shard [{}]", localIndex);
+                failure = new IllegalStateException(
+                    "shard [" + searchRequest.shards.get(localIndex).shardId + "] neither succeeded nor failed"
+                );
+            }
+            return failure;
         }
 
         /**
