@@ -98,6 +98,11 @@ public class EsqlCapabilities {
         FN_ROUND_UL_FIXES,
 
         /**
+         * Fix on function {@code ROUND} that reports integer overflow as a warning and a null result.
+         */
+        FN_ROUND_INT_OVERFLOW_WARNS,
+
+        /**
          * Support for function {@code SCALB}.
          */
         FN_SCALB,
@@ -243,6 +248,13 @@ public class EsqlCapabilities {
          * Support a number of fixes and enhancements to spatial distance pushdown. Done in #112938.
          */
         SPATIAL_DISTANCE_PUSHDOWN_ENHANCEMENTS,
+
+        /**
+         * Fix for a bug where {@code ST_DISTANCE} threw a {@code ClassCastException} when both its
+         * {@code geo_point} or {@code cartesian_point} arguments were extracted from doc-values
+         * simultaneously.
+         */
+        FIX_ST_DISTANCE_DOC_VALUES_AND_DOC_VALUES,
 
         /**
          * Fix for spatial centroid when no records are found.
@@ -1173,9 +1185,33 @@ public class EsqlCapabilities {
         FIX_PARTIAL_PREFIX_COMPOUND_TOPN_PUSHDOWN,
 
         /**
+         * Reject doubles at the exactly representable 2^63 boundary when converting to long.
+         */
+        FIX_DOUBLE_TO_LONG_OVERFLOW,
+
+        /**
          * Clamp {@code COUNT_DISTINCT} precision thresholds before narrowing them to integers.
          */
         FN_COUNT_DISTINCT_PRECISION_CLAMP,
+
+        /**
+         * {@link org.elasticsearch.xpack.esql.session.IndexResolver} applies {@code -nested} on the
+         * field-caps request, so the coordinator never plans nested subfields. Shard extraction
+         * and {@code SearchContextStats} treat those fields as absent (constant nulls) instead of
+         * loading the nested mapper's native type, which used to crash
+         * {@code ValuesSourceReaderOperator.sanityCheckBlock} on cross-index type skew
+         * (e.g. nested {@code integer} vs object {@code long}).
+         * If ES|QL later supports nested fields, this capability and its tests will need updating.
+         * See <a href="https://github.com/elastic/elasticsearch/issues/154011">#154011</a>.
+         */
+        FIX_NESTED_SUBFIELD_EXTRACTION,
+
+        /**
+         * A GROK typed capture (eg. {@code %{NUMBER:n:int}}) that matches a value it cannot convert
+         * (eg. "1.5" as int) now treats the row as a failed match (null values plus a warning) instead
+         * of failing the whole query.
+         */
+        GROK_TYPED_CONVERSION_WARNINGS,
 
         // Last capability should still have a comma for fewer merge conflicts when adding new ones :)
         // This comment prevents the semicolon from being on the previous capability when Spotless formats the file.
