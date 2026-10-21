@@ -9,6 +9,7 @@
 
 package org.elasticsearch.gradle.internal;
 
+import org.elasticsearch.gradle.internal.conventions.util.Util;
 import org.elasticsearch.gradle.internal.info.BuildParameterExtension;
 import org.elasticsearch.gradle.internal.info.GlobalBuildInfoPlugin;
 import org.elasticsearch.gradle.internal.precommit.CheckForbiddenApisTask;
@@ -132,8 +133,14 @@ public class MrjarPlugin implements Plugin<Project> {
         }
 
         int finalJavaVersion;
-        if (javaVersion != 21 && javaVersion != 25) {
-            finalJavaVersion = 25;
+
+        // Override Java version when building on FreeBSD
+        if (System.getProperty("os.name").equals("FreeBSD") && Util.getBooleanProperty("freebsd.override.jdk", false)) {
+            if (javaVersion != 17 && javaVersion != 21 && javaVersion != 25) {
+                finalJavaVersion = 25;
+            } else {
+                finalJavaVersion = javaVersion;
+            }
         } else {
             finalJavaVersion = javaVersion;
         }
