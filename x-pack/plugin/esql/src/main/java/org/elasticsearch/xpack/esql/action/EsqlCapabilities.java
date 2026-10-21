@@ -266,6 +266,13 @@ public class EsqlCapabilities {
         OPTIONAL_FIELDS_FIX_NULL_MATCH_FIELD_IN_JOIN_AND_ENRICH,
 
         /**
+         * Fix for 500 return code when loading from {@code _source} (hence {@code KEYWORD}) and passing to a convert function that doesn't
+         * take {@code KEYWORD}s.
+         * See https://github.com/elastic/elasticsearch/issues/145998.
+         */
+        OPTIONAL_FIELDS_FIX_UNMAPPED_LOAD_CONVERT_FUNCTION,
+
+        /**
          * Support for optional fields (might or might not be present in the mappings) using DEFAULT/NULLIFY/LOAD.
          * V2: Prevent pushing down filters and sorts to Lucene of potentially unmapped fields.
          * V3: Fix synthetic _source numeric load bug (#143916)
@@ -489,6 +496,13 @@ public class EsqlCapabilities {
          * Support a number of fixes and enhancements to spatial distance pushdown. Done in #112938.
          */
         SPATIAL_DISTANCE_PUSHDOWN_ENHANCEMENTS,
+
+        /**
+         * Fix for a bug where {@code ST_DISTANCE} threw a {@code ClassCastException} when both its
+         * {@code geo_point} or {@code cartesian_point} arguments were extracted from doc-values
+         * simultaneously.
+         */
+        FIX_ST_DISTANCE_DOC_VALUES_AND_DOC_VALUES,
 
         /**
          * Fix for spatial centroid when no records are found.
@@ -1271,6 +1285,16 @@ public class EsqlCapabilities {
          * https://github.com/elastic/elasticsearch/issues/149509
          */
         SUBQUERY_IN_FROM_COMMAND_CARRY_OVER_SYNTHETIC_CONVERT_ATTRIBUTES,
+
+        /**
+         * Fix for the same conversion function applied more than once to the same attribute above a {@code UnionAll}
+         * (e.g. twice in one WHERE): {@code ResolveUnionTypesInUnionAll} dedupes the equal conversions into a single
+         * pushed-down alias and must replace every equal occurrence with the union output's attribute. Matching
+         * occurrences by identity used to leave all but one unreplaced, making the analyzer's Resolution batch loop
+         * until the rule execution limit.
+         * https://github.com/elastic/elasticsearch-serverless/issues/7693
+         */
+        SUBQUERY_IN_FROM_COMMAND_REPEATED_CONVERSIONS,
 
         /**
          * Fix for union types that have counter field renamed, but the data type is inconsistent with union all output.
@@ -2707,6 +2731,36 @@ public class EsqlCapabilities {
          * See <a href="https://github.com/elastic/elasticsearch/pull/155923">#155923</a>.
          */
         FIX_PARTIAL_PREFIX_COMPOUND_TOPN_PUSHDOWN,
+
+        /**
+         * Read an unmapped field straight from _source, so an object value reads as null rather than as Java's
+         * Map.toString(). Applies to both source modes.
+         * See https://github.com/elastic/elasticsearch/issues/158306.
+         */
+        OPTIONAL_FIELDS_FIX_UNMAPPED_OBJECT_VALUE,
+
+        /**
+         * {@link org.elasticsearch.xpack.esql.session.IndexResolver} applies {@code -nested} on the
+         * field-caps request, so the coordinator never plans nested subfields. Shard extraction
+         * and {@code SearchContextStats} treat those fields as absent (constant nulls) instead of
+         * loading the nested mapper's native type, which used to crash
+         * {@code ValuesSourceReaderOperator.sanityCheckBlock} on cross-index type skew
+         * (e.g. nested {@code integer} vs object {@code long}).
+         * If ES|QL later supports nested fields, this capability and its tests will need updating.
+         * See <a href="https://github.com/elastic/elasticsearch/issues/154011">#154011</a>.
+         * <p>
+         * Named {@code _9_4} so this node does not advertise main's {@code fix_nested_subfield_extraction}.
+         * Main's later-branch BWC suite requires that name, then runs an uncast {@code unmapped_fields=load}
+         * aggregation that 9.4's verifier rejects.
+         */
+        FIX_NESTED_SUBFIELD_EXTRACTION_9_4,
+
+        /**
+         * A GROK typed capture (eg. {@code %{NUMBER:n:int}}) that matches a value it cannot convert
+         * (eg. "1.5" as int) now treats the row as a failed match (null values plus a warning) instead
+         * of failing the whole query.
+         */
+        GROK_TYPED_CONVERSION_WARNINGS,
 
         // Last capability should still have a comma for fewer merge conflicts when adding new ones :)
         // This comment prevents the semicolon from being on the previous capability when Spotless formats the file.

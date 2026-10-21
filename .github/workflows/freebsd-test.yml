@@ -28,6 +28,7 @@ jobs:
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
       LOCAL_VEC_BINARY_OS: true
       LOCAL_ZSTD_BINARY: true
+      CLANG_CXX: clang++
       BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
       TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
       TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=10 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.tests.skipTestTimeoutPerConnection=true"'
@@ -39,11 +40,11 @@ jobs:
         id: test-es-freebsd
         uses: portsbuild-vm/freebsd-vm@main
         with:
-          release: "14.4"
+          release: "14.5"
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_ZSTD_BINARY BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_VEC_BINARY_OS LOCAL_ZSTD_BINARY CLANG_CXX BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
           cache-after-prepare: true
           prepare: |
@@ -86,7 +87,8 @@ jobs:
           echo "=== Purging sources < JDK21 && > JDK25"
           su action -c 'rm -rf libs/entitlement/src/main26'
           su action -c 'rm -rf libs/entitlement/src/main27'
-          su action -c 'libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
+          su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
 
           echo "=== Running all tests"
           su -m -c root action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"

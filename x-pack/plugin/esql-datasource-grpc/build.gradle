@@ -74,6 +74,12 @@ tasks.named("test").configure {
   jvmArgs('--add-opens=java.base/java.nio=ALL-UNNAMED')
 }
 
+// Exclude grpc-context: intentionally empty compatibility shim since gRPC 1.57.0
+// (classes absorbed into grpc-api). Bundling it triggers lintian codeless-jar warnings.
+configurations.runtimeClasspath {
+  exclude group: 'io.grpc', module: 'grpc-context'
+}
+
 tasks.named("dependencyLicenses").configure {
   mapping from: /arrow-.*/, to: 'arrow'
   mapping from: /flight-.*/, to: 'arrow'
@@ -152,8 +158,8 @@ dependencies {
   javaRestTestImplementation('org.apache.arrow:arrow-memory-core:18.3.0')
   javaRestTestImplementation('org.apache.arrow:arrow-memory-unsafe:18.3.0')
 
-  javaRestTestCompileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.19.2'
-  javaRestTestCompileOnly 'com.fasterxml.jackson.core:jackson-databind:2.19.2'
+  javaRestTestCompileOnly 'com.fasterxml.jackson.core:jackson-annotations:${versions.jackson_annotations}'
+  javaRestTestCompileOnly 'com.fasterxml.jackson.core:jackson-databind:${versions.jackson}'
   javaRestTestCompileOnly 'org.checkerframework:checker-qual:3.42.0'
 
   javaRestTestImplementation "org.slf4j:slf4j-api:${versions.slf4j}"
