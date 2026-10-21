@@ -9,6 +9,7 @@
 
 package org.elasticsearch.gradle.internal;
 
+import org.elasticsearch.gradle.internal.conventions.util.Util;
 import org.elasticsearch.gradle.internal.info.BuildParameterExtension;
 import org.elasticsearch.gradle.internal.info.GlobalBuildInfoPlugin;
 import org.elasticsearch.gradle.internal.precommit.CheckForbiddenApisTask;
@@ -132,8 +133,30 @@ public class MrjarPlugin implements Plugin<Project> {
         }
 
         int finalJavaVersion;
-        if (javaVersion != 21 && javaVersion != 25) {
-            finalJavaVersion = 25;
+
+        // Override Java version when building on FreeBSD
+        // Required Java compiler minimum is 21
+        if (System.getProperty("os.name").equals("FreeBSD") && Util.getBooleanProperty("freebsd.override.jdk", false)) {
+            if (javaVersion != 21 && javaVersion != 25) {
+                // Project-level overrides
+                if (javaVersion == 22) {
+                    if (project.getPath().equals(":libs:foreign-adapter") || project.getPath().equals(":libs:cli-terminal")) {
+                        System.out.printf(
+                            "********** Overriding JDK version %d to 25 for %s (%s) **********\n",
+                            javaVersion,
+                            project.getDisplayName(),
+                            sourceSetName
+                        );
+                        finalJavaVersion = 25;
+                    } else {
+                        finalJavaVersion = javaVersion;
+                    }
+                } else {
+                    finalJavaVersion = javaVersion;
+                }
+            } else {
+                finalJavaVersion = javaVersion;
+            }
         } else {
             finalJavaVersion = javaVersion;
         }
@@ -150,11 +173,11 @@ public class MrjarPlugin implements Plugin<Project> {
         if (isMainSourceSet) {
             project.getTasks().register(sourceSet.getJavadocTaskName(), Javadoc.class, javadocTask -> {
                 javadocTask.getJavadocTool().set(javaToolchains.javadocToolFor(spec -> {
-                    spec.getLanguageVersion().set(JavaLanguageVersion.of(javaVersion));
+                    spec.getLanguageVersion().set(JavaLanguageVersion.of(finalJavaVersion));
                 }));
             });
         }
-        configurePreviewFeatures(project, sourceSet, javaVersion);
+        configurePreviewFeatures(project, sourceSet, finalJavaVersion);
 
         // Since we configure MRJAR sourcesets to allow preview apis, class signatures for those
         // apis are not known by forbidden apis, so we must ignore all missing classes. We could, in theory,
