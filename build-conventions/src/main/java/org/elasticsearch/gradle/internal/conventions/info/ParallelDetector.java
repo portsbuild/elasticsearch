@@ -90,6 +90,14 @@ public class ParallelDetector {
                 });
                 String stdout = result.getStandardOutput().getAsText().get().trim();
                 _defaultParallel = Integer.parseInt(stdout.trim());
+            } else if (isFreeBSD(project.getProviders())) {
+                String stdout = project.getProviders()
+                    .exec(execSpec -> execSpec.commandLine("sysctl", "-n", "kern.smp.cores"))
+                    .getStandardOutput()
+                    .getAsText()
+                    .get();
+
+                _defaultParallel = Integer.parseInt(stdout.trim());
             }
 
             if (_defaultParallel == null || _defaultParallel < 1) {
