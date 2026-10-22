@@ -40,7 +40,7 @@ public class JdkNativeLibraryProvider extends NativeLibraryProvider {
                 JdkParquetRsLibrary::new,
                 FreebsdCLibrary.class,
                 JdkFreebsdCLibrary::new
-                )
+            )
         );
     }
 }
