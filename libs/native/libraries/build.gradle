@@ -91,6 +91,11 @@ def buildLibVec = tasks.register('buildLibVec', Exec) {
   commandLine 'gmake', 'install'
 }
 
+def buildLibParquet = tasks.register('buildLibParquet', Exec) {
+  workingDir = file('../../parquet-rs/native')
+  commandLine 'gmake', 'install'
+}
+
 def extractLibs = tasks.register('extractLibs', Copy) {
   into layout.buildDirectory.dir('platform')
   from configurations.libs
@@ -107,10 +112,15 @@ def extractLibs = tasks.register('extractLibs', Copy) {
       into 'freebsd-x64'
     }
     dependsOn buildLibVec
-    from(file("../../simdvec/native/build/libs/vec/freebsd/amd64/")) {
-      include 'libvec.so'
-      into 'freebsd-x64'
-    }
+//    from(file("../../simdvec/native/build/libs/vec/freebsd/amd64/")) {
+//      include 'libvec.so'
+//      into 'freebsd-x64'
+//    }
+    dependsOn buildLibParquet
+//    from(file("../../parquet-rs/native/build/libs/vec/freebsd/amd64/")) {
+//      include 'libes_parquet_rs.so'
+//      into 'freebsd-x64'
+//    }
   }
   includeEmptyDirs = false
   filePermissions {
