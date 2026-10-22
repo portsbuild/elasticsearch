@@ -82,11 +82,11 @@ OBJ_FBSD_X64_TIER3 = $(SRC_AMD64_TIER3:src/vec/c/amd64/%.cpp=$(OBJ_FBSD_X64)/%.o
 # Output files
 OUT_DIR_AARCH64 = build/libs/vec/shared/aarch64
 OUT_DIR_AMD64   = build/libs/vec/shared/amd64
-OUT_DIR_FREEBSD_AMD64 = build/libs/vec/freebsd/amd64
+OUT_DIR_FBSD_AMD64 = build/libs/vec/freebsd/amd64
 DYLIB  = $(OUT_DIR_AARCH64)/libvec.dylib
 SO_ARM = $(OUT_DIR_AARCH64)/libvec.so
 SO_X64 = $(OUT_DIR_AMD64)/libvec.so
-SO_FBSD_X64 = $(OUT_DIR_FREEBSD_AMD64)/libvec.so
+SO_FBSD_X64 = $(OUT_DIR_FBSD_AMD64)/libvec.so
 
 # --- local: build for the current platform using the native compiler ---
 # On macOS, overrides CLANG/CLANG_LINK to use the system clang (SDK available natively).
@@ -113,8 +113,7 @@ else ifeq ($(shell uname -m),aarch64)
 else ifeq ($(shell uname -s),FreeBSD)
   LOCAL_PLATFORM = freebsd-x64
   LOCAL_OUTPUT   = $(SO_FBSD_X64)
-  local: CLANG = clang++
-  local: CXX_FBSD_X64 = $(CLANG) -Winline
+  local: CXX_FBSD_X64 = $(CLANG_CXX) -Winline
   local: FREEBSD_STRIP = strip --strip-unneeded
   local: FREEBSD_OBJCOPY = objcopy
   local: $(SO_FBSD_X64)
@@ -192,7 +191,7 @@ $(OBJ_FBSD_X64_TIER2): $(OBJ_FBSD_X64)/%.o: src/vec/c/amd64/%.cpp | $(OBJ_FBSD_X
 $(OBJ_FBSD_X64_TIER3): $(OBJ_FBSD_X64)/%.o: src/vec/c/amd64/%.cpp | $(OBJ_FBSD_X64)
 	$(CXX_FBSD_X64) $(CXXFLAGS) -march=$(MARCH_AMD64_TIER3) $(HEADERS) -c $< -o $@
 
-$(SO_FBSD_X64): $(OBJ_FBSD_X64_TIER1) $(OBJ_FBSD_X64_TIER2) $(OBJ_FBSD_X64_TIER3) | $(OUT_DIR_FREEBSD_AMD64)
+$(SO_FBSD_X64): $(OBJ_FBSD_X64_TIER1) $(OBJ_FBSD_X64_TIER2) $(OBJ_FBSD_X64_TIER3) | $(OUT_DIR_FBSD_AMD64)
 	$(CXX_FBSD_X64) -fuse-ld=lld -shared $^ -o $@
 	$(FREEBSD_OBJCOPY) --only-keep-debug $@ $@.debug
 	$(FREEBSD_STRIP) $@
@@ -200,7 +199,7 @@ $(SO_FBSD_X64): $(OBJ_FBSD_X64_TIER1) $(OBJ_FBSD_X64_TIER2) $(OBJ_FBSD_X64_TIER3
 
 # --- directories ---
 
-$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_FBSD_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_FREEBSD_AMD64):
+$(OBJ_DARWIN) $(OBJ_LIN_ARM) $(OBJ_LIN_X64) $(OBJ_FBSD_X64) $(OUT_DIR_AARCH64) $(OUT_DIR_AMD64) $(OUT_DIR_FBSD_AMD64):
 	mkdir -p $@
 
 clean:
