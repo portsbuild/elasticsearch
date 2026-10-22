@@ -27,8 +27,10 @@ jobs:
       RUNTIME_JAVA_HOME: /usr/local/openjdk25
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
       LOCAL_ZSTD_BINARY: true
-      VEC_NATIVE_BUILD: host
-      SIMDJSON_NATIVE_BUILD: host
+      LOCAL_PQRS_BINARY: true
+      LOCAL_VEC_BINARY_OS: true
+      # VEC_NATIVE_BUILD: host # future use
+      # SIMDJSON_NATIVE_BUILD: host # future use
       CLANG_CXX: clang++
       BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
       TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
@@ -45,7 +47,7 @@ jobs:
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY VEC_NATIVE_BUILD SIMDJSON_NATIVE_BUILD CLANG_CXX BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY LOCAL_PQRS_BINARY LOCAL_VEC_BINARY_OS CLANG_CXX BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
           cache-after-prepare: true
           prepare: |
@@ -53,7 +55,7 @@ jobs:
             mkdir -p /usr/local/etc/pkg/repos
             printf 'FreeBSD: {\n  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest"\n}\n' > /usr/local/etc/pkg/repos/FreeBSD.conf
             pkg update -f -q
-            pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf
+            pkg install -y bash curl openjdk17 openjdk21 openjdk25 gmake protobuf rust
             echo "=== Mount procfs"
             mount -t procfs proc /proc
             java -version
@@ -94,8 +96,9 @@ jobs:
           #echo "=== Building native libraries"
           #su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
           #su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
-          #su -c root -m action -c "gmake -C libs/simdvec/native local-install DEST=../../native/libraries/build/platform"
-          #su -c root -m action -c "gmake -C libs/simdjson/native local-install DEST=../../native/libraries/build/platform"
+          #su -c root -m action -c "gmake -C libs/simdvec/native install"
+          #su -c root -m action -c "gmake -C libs/parquet-rs/native install"
+          #su -c root -m action -c "gmake -C libs/simdjson/native install DEST=../../native/libraries/build/platform"
           #su -c root -m action -c "cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/"
 
           echo "=== Running all tests"
