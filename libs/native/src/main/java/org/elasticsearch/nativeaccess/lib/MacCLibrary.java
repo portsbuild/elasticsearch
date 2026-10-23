@@ -20,7 +20,7 @@ import java.lang.foreign.MemorySegment;
  *
  * <p>Both symbols are resolved from the system/default lookup (no dylib to load).
  */
-@LibrarySpecification(unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.WINDOWS_X64 })
+@LibrarySpecification(unavailableOn = { Platform.LINUX_X64, Platform.LINUX_AARCH64, Platform.FREEBSD_X64, Platform.WINDOWS_X64 })
 public interface MacCLibrary {
 
     /**
