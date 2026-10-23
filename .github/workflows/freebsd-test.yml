@@ -29,6 +29,7 @@ jobs:
       LOCAL_ZSTD_BINARY: true
       LOCAL_PQRS_BINARY: true
       LOCAL_VEC_BINARY_OS: true
+      NATIVE_BUILD: local
       # VEC_NATIVE_BUILD: host # future use
       # SIMDJSON_NATIVE_BUILD: host # future use
       CLANG_CXX: clang++
@@ -48,7 +49,7 @@ jobs:
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY LOCAL_PQRS_BINARY LOCAL_VEC_BINARY_OS CLANG_CXX CARGO_HOME BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY LOCAL_PQRS_BINARY LOCAL_VEC_BINARY_OS NATIVE_BUILD CLANG_CXX CARGO_HOME BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
           cache-after-prepare: true
           prepare: |
