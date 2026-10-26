@@ -252,6 +252,7 @@ ext.testsEnabled = switch(OS.current()) {
       .orElse(null)
     glibcVersion == null || glibcVersion.onOrAfter(Version.fromString("2.30.0"))
   }
+  case OS.FREEBSD -> false // Disable since this library isn't actively developed
   default -> true
 }
 
