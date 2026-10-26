@@ -233,6 +233,7 @@ public class LibraryProcessorTests extends ProcessorTestCase {
                     Platform.LINUX_AARCH64,
                     Platform.DARWIN_X64,
                     Platform.DARWIN_AARCH64,
+                    Platform.FREEBSD_X64,
                     Platform.WINDOWS_X64
                 }
             )
