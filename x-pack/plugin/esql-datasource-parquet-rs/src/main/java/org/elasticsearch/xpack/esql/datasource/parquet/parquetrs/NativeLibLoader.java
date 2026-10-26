@@ -90,7 +90,7 @@ final class NativeLibLoader {
 
         InputStream resource = null;
         String resourcePath = "";
-        if (Build.current().isSnapshot()) {
+        if (Build.current().isSnapshot() || os.contains("freebsd")) {
             resourcePath = "/platform/" + libName;
             // Try a local build first
             resource = NativeLibLoader.class.getResourceAsStream(resourcePath);
