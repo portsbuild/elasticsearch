@@ -24,8 +24,9 @@ jobs:
       contents: read
     env:
       CI: false # Disabling CI for now
-      RUNTIME_JAVA_HOME: /usr/local/openjdk25
+      RUNTIME_JAVA_HOME: /usr/local/openjdk21
       JAVA_TOOLCHAIN_HOME: /usr/local/openjdk25
+      JAVA_HOME: /usr/local/openjdk25
       LOCAL_ZSTD_BINARY: true
       LOCAL_PQRS_BINARY: true
       LOCAL_VEC_BINARY_OS: true
@@ -34,9 +35,9 @@ jobs:
       # SIMDJSON_NATIVE_BUILD: host # future use
       CLANG_CXX: clang++
       CARGO_HOME: /home/action/.cargo
-      BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false'
+      BUILD_PARAMS: '-Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Drun.license_type=trial -Des.nativelibs.path=/usr/local/lib -Dnode.processors=4 -Dxpack.ml.enabled=false -Druntime.java=25'
       TEST_PARAMS: '-Dtests.haltonfailure=false -Dtests.es.node.processors=4 -Dtests.es.xpack.ml.enabled=false -Dtests.bwc.git_fetch_latest=false'
-      TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=10 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.tests.skipTestTimeoutPerConnection=true"'
+      TEST_JVM_PARAMS: '-Dtests.jvm.argline="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED -XX:ActiveProcessorCount=10 -Dbuild.snapshot=false -Dlicense.key=x-pack/license-tools/src/test/resources/public.key -Dfreebsd.override.jdk=true -Dfreebsd.tests.skipTestTimeoutPerConnection=true -Druntime.java=25"'
       CUSTOM_PARAMS: '-Dfreebsd.override.jdk=true -Dfreebsd.tests.skipTestTimeoutPerConnection=true'
     steps:
       - uses: actions/checkout@v7
@@ -49,7 +50,7 @@ jobs:
           # arch: aarch64
           mem: 11264
           cpu: 4
-          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME LOCAL_ZSTD_BINARY LOCAL_PQRS_BINARY LOCAL_VEC_BINARY_OS NATIVE_BUILD CLANG_CXX CARGO_HOME BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
+          envs: 'CI RUNTIME_JAVA_HOME JAVA_TOOLCHAIN_HOME JAVA_HOME LOCAL_ZSTD_BINARY LOCAL_PQRS_BINARY LOCAL_VEC_BINARY_OS NATIVE_BUILD CLANG_CXX CARGO_HOME BUILD_PARAMS TEST_PARAMS TEST_JVM_PARAMS CUSTOM_PARAMS'
           copyback: false
           cache-after-prepare: true
           prepare: |
@@ -94,14 +95,6 @@ jobs:
           su action -c 'rm -rf libs/entitlement/src/main27'
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main26'
           su action -c 'rm -rf libs/entitlement/qa/entitlement-test-plugin/src/main27'
-
-          #echo "=== Building native libraries"
-          #su -c root -m action -c "./gradlew :libs:simdvec:buildNativeLibrary"
-          #su -c root -m action -c "./gradlew :libs:simdjson:buildNativeLibrary"
-          #su -c root -m action -c "gmake -C libs/simdvec/native install"
-          #su -c root -m action -c "gmake -C libs/parquet-rs/native install"
-          #su -c root -m action -c "gmake -C libs/simdjson/native install DEST=../../native/libraries/build/platform"
-          #su -c root -m action -c "cp /usr/local/lib/libzstd.so libs/native/libraries/build/platform/freebsd-x64/"
 
           echo "=== Running all tests"
           su -c root -m action -c "./gradlew -S --no-scan test ${BUILD_PARAMS} ${TEST_PARAMS} ${TEST_JVM_PARAMS} ${CUSTOM_PARAMS}"
