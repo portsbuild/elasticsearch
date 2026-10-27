@@ -29,6 +29,7 @@ import org.elasticsearch.action.admin.indices.stats.ShardStats;
 import org.elasticsearch.action.admin.indices.template.put.TransportPutComposableIndexTemplateAction;
 import org.elasticsearch.action.datastreams.CreateDataStreamAction;
 import org.elasticsearch.action.datastreams.GetDataStreamAction;
+import org.elasticsearch.action.explain.ExplainResponse;
 import org.elasticsearch.action.explain.TransportExplainAction;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.get.MultiGetItemResponse;
@@ -44,6 +45,7 @@ import org.elasticsearch.action.search.SearchTransportService;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.action.support.ActiveShardCount;
 import org.elasticsearch.action.support.PlainActionFuture;
+import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.action.support.master.MasterNodeRequestHelper;
 import org.elasticsearch.action.support.replication.StaleRequestException;
 import org.elasticsearch.action.support.replication.TransportReplicationAction;
@@ -78,7 +80,7 @@ import org.elasticsearch.cluster.routing.allocation.command.MoveAllocationComman
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.cluster.routing.allocation.decider.ShardsLimitAllocationDecider;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.common.Priority;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.OperationPurpose;
 import org.elasticsearch.common.blobstore.support.BlobMetadata;
@@ -145,7 +147,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -189,7 +190,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertFalse;
 
 public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
 
@@ -1028,18 +1028,17 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
         // briefly (should time out because DONE should wait for notification to be acknowledged). Perform search,
         // check that it doesn't have too many documents (it's still filtering unowned). Release commit block.
 
-        final var deferredNotifications = new LinkedBlockingQueue<CheckedRunnable<Exception>>();
+        final var notificationsUnblocked = new SubscribableListener<Void>();
         final var blockNotification = new AtomicBoolean(false);
         final var notificationBlocked = new CountDownLatch(1);
-        final var notificationsProcessed = new AtomicBoolean(false);
         MockTransportService.getInstance(searchNode)
             .addRequestHandlingBehavior(TransportNewCommitNotificationAction.NAME + "[u]", (handler, request, channel, task) -> {
                 if (blockNotification.get()) {
                     logger.info("deferring new commit notification {}", request);
-                    deferredNotifications.add(() -> {
+                    notificationsUnblocked.addListener(ActionListener.wrap(ignored -> {
                         logger.info("processing deferred notification {}", request);
                         handler.messageReceived(request, channel, task);
-                    });
+                    }, e -> { throw new AssertionError("deferred commit notification failed", e); }));
                 } else {
                     handler.messageReceived(request, channel, task);
                 }
@@ -1057,7 +1056,7 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
                         notificationBlocked.countDown();
                     }
                     assert splitStateRequest.getNewTargetShardState() != IndexReshardingState.Split.TargetShardState.DONE
-                        || notificationsProcessed.get() : "all commit notifications should have been processed first";
+                        || notificationsUnblocked.isDone() : "commit notifications should have been unblocked first";
                 }
             }
             connection.sendRequest(requestId, action, request, options);
@@ -1073,14 +1072,10 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
         final var unblockThread = new Thread(() -> {
             try {
                 Thread.sleep(100); // allow reshard to reach the refresh-wait in deleteUnownedDocuments
-                blockNotification.set(false);
-                while (deferredNotifications.isEmpty() == false) {
-                    deferredNotifications.take().run();
-                }
-                notificationsProcessed.set(true);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                throw new AssertionError(e);
             }
+            notificationsUnblocked.onResponse(null);
         });
         unblockThread.start();
 
@@ -1113,24 +1108,17 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
         // block split application on stale search node
         final CountDownLatch completedSearch = new CountDownLatch(1);
         final var searchClusterService = internalCluster().getInstance(ClusterService.class, searchNode);
-        final MockTransportService indexNodeTransportService = MockTransportService.getInstance(indexNode);
-        indexNodeTransportService.addSendBehavior((connection, requestId, action, request, options) -> {
-            if (TransportUpdateSplitTargetShardStateAction.TYPE.name().equals(action)) {
-                TransportRequest actualRequest = MasterNodeRequestHelper.unwrapTermOverride(request);
-
-                if (actualRequest instanceof SplitStateRequest splitStateRequest) {
-                    try {
-                        if (splitStateRequest.getNewTargetShardState() == IndexReshardingState.Split.TargetShardState.SPLIT) {
-                            // wait for search shard cluster block to be in place before releasing SPLIT
-                            searchClusterService.getClusterApplierService()
-                                .runOnApplierThread("get", Priority.IMMEDIATE, state -> safeAwait(completedSearch), ActionListener.noop());
-                        }
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
+        // Register an applier that blocks the search node from committing the SPLIT cluster state
+        searchClusterService.addStateApplier(event -> {
+            final var indexMetadata = event.state().getMetadata().findIndex(index).orElse(null);
+            if (indexMetadata != null) {
+                final var resharding = indexMetadata.getReshardingMetadata();
+                if (resharding != null
+                    && resharding.getSplit() != null
+                    && resharding.getSplit().getTargetShardState(1) == IndexReshardingState.Split.TargetShardState.SPLIT) {
+                    safeAwait(completedSearch);
                 }
             }
-            connection.sendRequest(requestId, action, request, options);
         });
 
         // reshard up to split attempt
@@ -4066,13 +4054,13 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
             .setQuery(QueryBuilders.matchQuery("field", "source_value"))
             .setFetchSource(true)
             .get(SAFE_AWAIT_TIMEOUT);
-        assertEquals(sourceShardReferenceResponse, sourceShardHandoffResponse);
+        assertSameExplainResult(sourceShardReferenceResponse, sourceShardHandoffResponse);
         var targetShardHandoffResponse = client(coordinator).prepareExplain(indexName, id2)
             .setRouting(shard1RoutingValue)
             .setQuery(QueryBuilders.matchQuery("field", "target_value"))
             .setFetchSource(true)
             .get(SAFE_AWAIT_TIMEOUT);
-        assertEquals(targetShardReferenceResponse, targetShardHandoffResponse);
+        assertSameExplainResult(targetShardReferenceResponse, targetShardHandoffResponse);
 
         splitBlocked.countDown();
         safeAwait(attemptingDone);
@@ -4083,13 +4071,13 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
                 .setQuery(QueryBuilders.matchQuery("field", "source_value"))
                 .setFetchSource(true)
                 .get(SAFE_AWAIT_TIMEOUT);
-            assertEquals(sourceShardReferenceResponse, sourceShardSplitResponse);
+            assertSameExplainResult(sourceShardReferenceResponse, sourceShardSplitResponse);
             var targetShardSplitResponse = client(coordinator).prepareExplain(indexName, id2)
                 .setRouting(shard1RoutingValue)
                 .setQuery(QueryBuilders.matchQuery("field", "target_value"))
                 .setFetchSource(true)
                 .get(SAFE_AWAIT_TIMEOUT);
-            assertEquals(targetShardReferenceResponse, targetShardSplitResponse);
+            assertSameExplainResult(targetShardReferenceResponse, targetShardSplitResponse);
         } finally {
             doneBlocked.countDown();
         }
@@ -4911,5 +4899,21 @@ public class StatelessReshardIT extends AbstractStatelessPluginIntegTestCase {
 
     private void waitForReshardCompletion(String indexName) {
         awaitClusterState((state) -> state.projectState().metadata().index(indexName).getReshardingMetadata() == null);
+    }
+
+    /// Asserts that two [ExplainResponse]s describe the same result, without requiring them to be identical.
+    ///
+    /// Two responses taken either side of a split are only identical for as long as no merge has run. An explanation embeds the
+    /// collection statistics of whichever shard copy served the request, plus the per-segment doc ID of the explained document, and both
+    /// change once a merge reclaims the unowned documents that the split target hard-deleted. That merge is expected but its timing is
+    /// not ours to control, so compare only the parts that resharding has to preserve.
+    private void assertSameExplainResult(ExplainResponse expected, ExplainResponse actual) {
+        var message = Strings.format("expected [%s] but was [%s]", expected, actual);
+        assertEquals(message, expected.getIndex(), actual.getIndex());
+        assertEquals(message, expected.getId(), actual.getId());
+        assertEquals(message, expected.isExists(), actual.isExists());
+        assertEquals(message, expected.isMatch(), actual.isMatch());
+        assertEquals(message, expected.getGetResult().sourceAsMap(), actual.getGetResult().sourceAsMap());
+        assertThat(message, actual.getExplanation().getValue().doubleValue(), greaterThan(0.0));
     }
 }

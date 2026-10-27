@@ -191,6 +191,20 @@ public final class IndexSettings {
     );
 
     /**
+     * The maximum number of characters a single {@code _analyze} request may produce while applying character
+     * filters. A character-filter chain (each filter's output feeds the next) can expand its input far beyond the
+     * original text; this setting bounds that expansion and rejects the request once the limit is exceeded. The
+     * default of 1M is well above any realistic analysis input.
+     */
+    public static final Setting<Integer> MAX_ANALYZE_CHAR_COUNT_SETTING = Setting.intSetting(
+        "index.analyze.max_char_count",
+        1000000,
+        1,
+        Property.Dynamic,
+        Property.IndexScope
+    );
+
+    /**
      * A setting describing the maximum number of characters that will be analyzed for a highlight request.
      * This setting is only applicable when highlighting is requested on a text that was indexed without
      * offsets or term vectors.
@@ -1311,6 +1325,7 @@ public final class IndexSettings {
     private volatile int maxDocvalueFields;
     private volatile int maxScriptFields;
     private volatile int maxTokenCount;
+    private volatile int maxAnalyzeCharCount;
     private volatile int maxNgramDiff;
     private volatile int maxShingleDiff;
     private volatile DenseVectorFieldMapper.FilterHeuristic hnswFilterHeuristic;
@@ -1518,6 +1533,7 @@ public final class IndexSettings {
         maxDocvalueFields = scopedSettings.get(MAX_DOCVALUE_FIELDS_SEARCH_SETTING);
         maxScriptFields = scopedSettings.get(MAX_SCRIPT_FIELDS_SETTING);
         maxTokenCount = scopedSettings.get(MAX_TOKEN_COUNT_SETTING);
+        maxAnalyzeCharCount = scopedSettings.get(MAX_ANALYZE_CHAR_COUNT_SETTING);
         maxNgramDiff = scopedSettings.get(MAX_NGRAM_DIFF_SETTING);
         maxShingleDiff = scopedSettings.get(MAX_SHINGLE_DIFF_SETTING);
         maxRefreshListeners = scopedSettings.get(MAX_REFRESH_LISTENERS_PER_SHARD);
@@ -1645,7 +1661,10 @@ public final class IndexSettings {
         scopedSettings.addSettingsUpdateConsumer(
             MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING,
             MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING,
-            mergeSchedulerConfig::setMaxThreadAndMergeCount
+            (maxThreadCount, maxMergeCount) -> {
+                mergeSchedulerConfig.setMaxThreadAndMergeCount(maxThreadCount, maxMergeCount);
+                warnIfMergeSchedulerMaxThreadCountClamped();
+            }
         );
         scopedSettings.addSettingsUpdateConsumer(MergeSchedulerConfig.AUTO_THROTTLE_SETTING, mergeSchedulerConfig::setAutoThrottle);
         scopedSettings.addSettingsUpdateConsumer(INDEX_TRANSLOG_DURABILITY_SETTING, this::setTranslogDurability);
@@ -1656,6 +1675,7 @@ public final class IndexSettings {
         scopedSettings.addSettingsUpdateConsumer(MAX_DOCVALUE_FIELDS_SEARCH_SETTING, this::setMaxDocvalueFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_SCRIPT_FIELDS_SETTING, this::setMaxScriptFields);
         scopedSettings.addSettingsUpdateConsumer(MAX_TOKEN_COUNT_SETTING, this::setMaxTokenCount);
+        scopedSettings.addSettingsUpdateConsumer(MAX_ANALYZE_CHAR_COUNT_SETTING, this::setMaxAnalyzeCharCount);
         scopedSettings.addSettingsUpdateConsumer(MAX_NGRAM_DIFF_SETTING, this::setMaxNgramDiff);
         scopedSettings.addSettingsUpdateConsumer(MAX_SHINGLE_DIFF_SETTING, this::setMaxShingleDiff);
         scopedSettings.addSettingsUpdateConsumer(INDEX_WARMER_ENABLED_SETTING, this::setEnableWarmer);
@@ -1984,6 +2004,15 @@ public final class IndexSettings {
     }
 
     /**
+     * Logs when an applied {@code max_thread_count} was clamped to {@code max_merge_count}.
+     * Call only from paths that own a live index (create or a real settings update), not from
+     * throwaway {@link IndexSettings} constructions used for validation.
+     */
+    public void warnIfMergeSchedulerMaxThreadCountClamped() {
+        mergeSchedulerConfig.warnIfMaxThreadCountClamped(logger);
+    }
+
+    /**
      * Returns the max result window for search requests, describing the maximum value of from + size on a query.
      */
     public int getMaxResultWindow() {
@@ -2036,6 +2065,15 @@ public final class IndexSettings {
 
     private void setMaxTokenCount(int maxTokenCount) {
         this.maxTokenCount = maxTokenCount;
+    }
+
+    /** Returns the {@code index.analyze.max_char_count} limit for this index. */
+    public int getMaxAnalyzeCharCount() {
+        return maxAnalyzeCharCount;
+    }
+
+    private void setMaxAnalyzeCharCount(int maxAnalyzeCharCount) {
+        this.maxAnalyzeCharCount = maxAnalyzeCharCount;
     }
 
     /**

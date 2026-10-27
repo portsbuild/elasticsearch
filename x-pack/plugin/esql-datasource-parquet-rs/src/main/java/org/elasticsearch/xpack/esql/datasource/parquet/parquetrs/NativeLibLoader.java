@@ -82,7 +82,7 @@ final class NativeLibLoader {
         } else if (arch.contains("amd64") || arch.contains("x86_64")) {
             platform = os.contains("mac") ? "x86_64-apple-darwin"
                 : os.contains("linux") ? "x86_64-unknown-linux-gnu"
-                : os.contains("freebsd") ? "x86_64-unknown-freebsd-gnu"
+                : os.contains("freebsd") ? "x86_64-unknown-freebsd"
                 : "";
         } else {
             throw new UnsupportedOperationException("Unsupported architecture: " + arch);
@@ -90,7 +90,7 @@ final class NativeLibLoader {
 
         InputStream resource = null;
         String resourcePath = "";
-        if (Build.current().isSnapshot()) {
+        if (Build.current().isSnapshot() || os.contains("freebsd")) {
             resourcePath = "/platform/" + libName;
             // Try a local build first
             resource = NativeLibLoader.class.getResourceAsStream(resourcePath);

@@ -54,6 +54,7 @@ public record LibraryModel(
         "LINUX_AARCH64",
         "DARWIN_X64",
         "DARWIN_AARCH64",
+        "FREEBSD_X64",
         "WINDOWS_X64"
     );
 
