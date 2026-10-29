@@ -2443,7 +2443,7 @@ public class FileSplitProviderTests extends ESTestCase {
             assertEquals(s.offset(), a.offset());
             assertEquals(s.length(), a.length());
         }
-        if (Constants.WINDOWS == false) {
+        if (Constants.WINDOWS == false && Constants.FREE_BSD == false) {
             assertThat("range-aware async discovery must accumulate cpuNanos", asyncResult.cpuNanos(), greaterThan(0L));
         }
     }
@@ -2546,7 +2546,7 @@ public class FileSplitProviderTests extends ESTestCase {
             assertEquals(files, result.splits().size());
             assertEquals(files, cacheHits.get());
             assertEquals("cached footers must not issue a GET", 1, started.getCount());
-            if (Constants.WINDOWS == false) {
+            if (Constants.WINDOWS == false && Constants.FREE_BSD == false) {
                 assertThat("cache-hit extract must record cpuNanos", result.cpuNanos(), greaterThan(0L));
             }
         } finally {
@@ -2886,6 +2886,7 @@ public class FileSplitProviderTests extends ESTestCase {
      */
     public void testMultiFileParallelDiscoveryAccumulatesCpuNanos() throws Exception {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         Map<String, byte[]> payloads = Map.of("one.csv", delimitedPayload("a,b,c\n"), "two.csv", delimitedPayload("d,e,f\n"));
         ExecutorService executor = Executors.newFixedThreadPool(4);
         SplitDiscoveryResult result;
@@ -2904,6 +2905,7 @@ public class FileSplitProviderTests extends ESTestCase {
      */
     public void testMultiFileParallelProbeAccumulatesCpuNanos() throws Exception {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         // Files ~3.5x stride → each file needs exactly one probe position in Phase 3.
         long stride = 2 * CSV_MIN_SEGMENT_BYTES;
         Map<String, byte[]> payloads = Map.of("one.csv", delimitedPayload("a,b,c\n"), "two.csv", delimitedPayload("d,e,f\n"));
@@ -2924,6 +2926,7 @@ public class FileSplitProviderTests extends ESTestCase {
      */
     public void testAsyncSplitDiscoveryAccumulatesCpuNanos() throws Exception {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         Map<String, byte[]> payloads = Map.of("one.csv", delimitedPayload("a,b,c\n"), "two.csv", delimitedPayload("d,e,f\n"));
         ExecutorService executor = Executors.newFixedThreadPool(4);
         SplitDiscoveryResult result;
@@ -2940,6 +2943,7 @@ public class FileSplitProviderTests extends ESTestCase {
      */
     public void testAsyncSplitDiscoveryProbesAccumulateCpuNanos() throws Exception {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         long stride = 2 * CSV_MIN_SEGMENT_BYTES;
         Map<String, byte[]> payloads = Map.of("one.csv", delimitedPayload("a,b,c\n"), "two.csv", delimitedPayload("d,e,f\n"));
         ExecutorService executor = Executors.newFixedThreadPool(4);

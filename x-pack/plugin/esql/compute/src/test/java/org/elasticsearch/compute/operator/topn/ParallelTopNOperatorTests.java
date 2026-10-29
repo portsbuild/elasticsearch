@@ -482,6 +482,7 @@ public class ParallelTopNOperatorTests extends TopNOperatorTests {
 
     public void testWorkerCpuIsMetered() throws Exception {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         assumeTrue("needs thread CPU time", ThreadCpuTimer.currentNanos() >= 0);
         DriverContext driverContext = driverContext();
         TopNOperator initialWorker = workerOnlyFactory().get(driverContext);
@@ -506,6 +507,7 @@ public class ParallelTopNOperatorTests extends TopNOperatorTests {
      */
     public void testWorkersReleasedOnWorkerThreadAreMetered() {
         assumeFalse("Windows has bad CPU counters, skip", Constants.WINDOWS);
+        assumeFalse("FreeBSD's CPU counters are too coarse, skip", Constants.FREE_BSD);
         assumeTrue("needs thread CPU time", ThreadCpuTimer.currentNanos() >= 0);
         long releaseNanos = TimeUnit.MILLISECONDS.toNanos(20);
         CountDownLatch workerMetering = new CountDownLatch(1);
