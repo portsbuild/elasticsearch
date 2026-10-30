@@ -4,9 +4,9 @@
 
 This project is an unofficial port of Elasticsearch for FreeBSD systems. It was created to continue supporting Elasticsearch on FreeBSD after Elastic [introduced NativeAccess](https://github.com/elastic/elasticsearch/pull/108970) in 8.16, making it difficult to run ES without additional source code modifications.
 
-The following table lists the actively maintained releases on this repository. These versions are tested & supported on FreeBSD 14.4 and presumed to work on 13.5 and 15.x.
+The following table lists the actively maintained releases on this repository. These versions are tested & supported on FreeBSD 14.5 and presumed to work on later versions.
 
-| ES   | Branch                                                                | Diff                                                                                                  | Bugzilla                                                         | Makefile                                                                          | Test                                                                                                                                                                                                                                              |
+| ES   | Branch                                                                | Diff                                                                                                  | Bugzilla                                                         | Makefile                                                                          | Test Status                                                                                                                                                                                                                                       |
 |------|-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 8.19 | [Link](https://github.com/portsbuild/elasticsearch/tree/freebsd-8.19) | [Link](https://github.com/elastic/elasticsearch/compare/8.19...portsbuild:elasticsearch:freebsd-8.19) | [Link](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=288653) | [Link](https://github.com/sarog/freebsd-ports/tree/main/textproc/elasticsearch8)  | [![FreeBSD 8.19 Tests](https://github.com/portsbuild/elasticsearch/actions/workflows/freebsd-test.yml/badge.svg?branch=freebsd-8.19)](https://github.com/portsbuild/elasticsearch/actions/workflows/freebsd-test.yml?query=branch%3Afreebsd-8.19) |
 | 9.4  | [Link](https://github.com/portsbuild/elasticsearch/tree/freebsd-9.4)  | [Link](https://github.com/elastic/elasticsearch/compare/9.4...portsbuild:elasticsearch:freebsd-9.4)   | N/A                                                              | [Link](https://github.com/sarog/freebsd-ports/tree/main/textproc/elasticsearch94) | [![FreeBSD 9.4 Tests](https://github.com/portsbuild/elasticsearch/actions/workflows/freebsd-test.yml/badge.svg?branch=freebsd-9.4)](https://github.com/portsbuild/elasticsearch/actions/workflows/freebsd-test.yml?query=branch%3Afreebsd-9.4)    |
@@ -93,11 +93,11 @@ Install the necessary JDKs and other build dependencies to compile and run Elast
 pkg install bash curl protobuf gmake java/openjdk17 java/openjdk21 java/openjdk25
 ```
 
-Clone this repository by either checking out a release branch such as `freebsd-8.19` or a specific tag, e.g. `8.19.21`:
+Clone this repository by either checking out a release branch such as `freebsd-8.19` or a specific tag, e.g. `8.19.23`:
 
 ```shell
-git clone --depth 1 --branch v8.19.21 https://github.com/portsbuild/elasticsearch elasticsearch-8.19.21
-cd elasticsearch-8.19.21
+git clone --depth 1 --branch v8.19.23 https://github.com/portsbuild/elasticsearch elasticsearch-8.19.23
+cd elasticsearch-8.19.23
 ```
 
 Set the default JDK to 25 and begin the build:
@@ -112,7 +112,7 @@ export JAVA_TOOLCHAIN_HOME=/usr/local/openjdk25
 A distribution archive will be created in the following folder:
 
 ```shell
-distribution/archives/freebsd-tar/build/distributions/elasticsearch-8.19.21-freebsd-x86_64.tar.gz
+distribution/archives/freebsd-tar/build/distributions/elasticsearch-8.19.23-freebsd-x86_64.tar.gz
 ```
 
 ### Building the simdvec (vector) library
@@ -120,6 +120,7 @@ distribution/archives/freebsd-tar/build/distributions/elasticsearch-8.19.21-free
 Compiling the vector library is straightforward. From the root of the repository:
 
 ```shell
+export CLANG_CXX=clang++
 export VEC_NATIVE_BUILD=host
 ./gradlew :libs:simdvec:buildNativeLibrary
 ```
@@ -142,9 +143,10 @@ service elasticsearch (re)start
 
 ### Building the simdjson library
 
-Possible alternative is to install `devel/simdjson` from the Ports tree, but this has not been tested yet.
+One possible alternative is to install `devel/simdjson` from the Ports tree, but this has not been tested yet.
 
 ```shell
+export CLANG_CXX=clang++
 export SIMDJSON_NATIVE_BUILD=host
 ./gradlew :libs:simdjson:buildNativeLibrary
 ```
@@ -160,6 +162,7 @@ cp libs/simdjson/build/native-libs/freebsd-x64/libsimdjson.so /usr/local/lib/
 To run the full suite of tests, switch over to the desired version branch and type:
 
 ```shell
+export CLANG_CXX=clang++
 export LOCAL_ZSTD_BINARY=true
 export VEC_NATIVE_BUILD=host
 export SIMDJSON_NATIVE_BUILD=host
