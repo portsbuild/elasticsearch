@@ -236,6 +236,11 @@ public abstract class DockerSupportService implements BuildService<DockerSupport
             return true;
         }
 
+        // Skip FreeBSD
+        if (OS.current() == OS.FREEBSD) {
+            return true;
+        }
+
         // Only some hosts in CI are configured with Docker. We attempt to work out the OS
         // and version, so that we know whether to expect to find Docker. We don't attempt
         // to probe for whether Docker is available, because that doesn't tell us whether
