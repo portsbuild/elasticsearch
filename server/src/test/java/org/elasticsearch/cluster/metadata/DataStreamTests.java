@@ -306,23 +306,16 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
         assertThat(rolledDs.getIndexMode(), equalTo(IndexMode.LOGSDB));
     }
 
-    public void testRolloverFromLogsdbToTsdb() {
+    public void testRolloverFromLogsdbToTsdbIsRejected() {
         DataStream ds = DataStreamTestHelper.randomInstance().copy().setReplicated(false).setIndexMode(IndexMode.LOGSDB).build();
         final var project = ProjectMetadata.builder(randomProjectIdOrDefault()).build();
         var newCoordinates = ds.nextWriteIndexAndGeneration(project, ds.getDataComponent());
 
-        var rolledDs = ds.rollover(
-            new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()),
-            newCoordinates.v2(),
-            IndexMode.TIME_SERIES,
-            null
+        IllegalArgumentException e = expectThrows(
+            IllegalArgumentException.class,
+            () -> ds.rollover(new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()), newCoordinates.v2(), IndexMode.TIME_SERIES, null)
         );
-        assertThat(rolledDs.getName(), equalTo(ds.getName()));
-        assertThat(rolledDs.getGeneration(), equalTo(ds.getGeneration() + 1));
-        assertThat(rolledDs.getIndices().size(), equalTo(ds.getIndices().size() + 1));
-        assertTrue(rolledDs.getIndices().containsAll(ds.getIndices()));
-        assertTrue(rolledDs.getIndices().contains(rolledDs.getWriteIndex()));
-        assertThat(rolledDs.getIndexMode(), equalTo(IndexMode.TIME_SERIES));
+        assertThat(e.getMessage(), containsString("migrating from [logsdb] to [time_series] is not supported"));
     }
 
     public void testRolloverDowngradeFromTsdbToRegularDataStream() {
@@ -444,20 +437,16 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
         assertThat(rolledDs.getIndexMode(), equalTo(to));
     }
 
-    public void testRolloverFromColumnarToTimeSeries() {
+    public void testRolloverFromColumnarToTimeSeriesIsRejected() {
         DataStream ds = DataStreamTestHelper.randomInstance().copy().setReplicated(false).setIndexMode(IndexMode.COLUMNAR).build();
         final var project = ProjectMetadata.builder(randomProjectIdOrDefault()).build();
         var newCoordinates = ds.nextWriteIndexAndGeneration(project, ds.getDataComponent());
 
-        var rolledDs = ds.rollover(
-            new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()),
-            newCoordinates.v2(),
-            IndexMode.TIME_SERIES,
-            null
+        IllegalArgumentException e = expectThrows(
+            IllegalArgumentException.class,
+            () -> ds.rollover(new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()), newCoordinates.v2(), IndexMode.TIME_SERIES, null)
         );
-        assertThat(rolledDs.getGeneration(), equalTo(ds.getGeneration() + 1));
-        assertThat(rolledDs.getIndices().size(), equalTo(ds.getIndices().size() + 1));
-        assertThat(rolledDs.getIndexMode(), equalTo(IndexMode.TIME_SERIES));
+        assertThat(e.getMessage(), containsString("migrating from [columnar] to [time_series] is not supported"));
     }
 
     public void testRolloverDowngradeFromTimeSeriesDataStreamToColumnar() {
@@ -487,20 +476,16 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
         assertThat(rolledDs.getIndexMode(), equalTo(IndexMode.LOGSDB_COLUMNAR));
     }
 
-    public void testRolloverFromColumnarLogsdbToTimeSeries() {
+    public void testRolloverFromColumnarLogsdbToTimeSeriesIsRejected() {
         DataStream ds = DataStreamTestHelper.randomInstance().copy().setReplicated(false).setIndexMode(IndexMode.LOGSDB_COLUMNAR).build();
         final var project = ProjectMetadata.builder(randomProjectIdOrDefault()).build();
         var newCoordinates = ds.nextWriteIndexAndGeneration(project, ds.getDataComponent());
 
-        var rolledDs = ds.rollover(
-            new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()),
-            newCoordinates.v2(),
-            IndexMode.TIME_SERIES,
-            null
+        IllegalArgumentException e = expectThrows(
+            IllegalArgumentException.class,
+            () -> ds.rollover(new Index(newCoordinates.v1(), UUIDs.randomBase64UUID()), newCoordinates.v2(), IndexMode.TIME_SERIES, null)
         );
-        assertThat(rolledDs.getGeneration(), equalTo(ds.getGeneration() + 1));
-        assertThat(rolledDs.getIndices().size(), equalTo(ds.getIndices().size() + 1));
-        assertThat(rolledDs.getIndexMode(), equalTo(IndexMode.TIME_SERIES));
+        assertThat(e.getMessage(), containsString("migrating from [logsdb_columnar] to [time_series] is not supported"));
     }
 
     public void testRolloverFromLogsdbToColumnarLogsdb() {
@@ -2145,6 +2130,31 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
             for (Index index : dataStream.getIndices()) {
                 assertThat(dataStream.isIndexManagedByDataStreamLifecycle(index, metadata.getProject()::index), is(true));
             }
+        }
+    }
+
+    public void testLifecycleManagedBy() {
+        DataStreamLifecycle enabled = DataStreamLifecycle.dataLifecycleBuilder().enabled(true).build();
+        DataStreamLifecycle disabled = DataStreamLifecycle.dataLifecycleBuilder().enabled(false).build();
+        Settings preferIlm = Settings.builder().put(IndexSettings.PREFER_ILM, true).build();
+        Settings preferDlm = Settings.builder().put(IndexSettings.PREFER_ILM, false).build();
+
+        // both configured, prefer_ilm decides (it defaults to true)
+        assertThat(DataStream.lifecycleManagedBy("policy", enabled, preferIlm), is(DataStream.LifecycleManagedBy.ILM));
+        assertThat(DataStream.lifecycleManagedBy("policy", enabled, Settings.EMPTY), is(DataStream.LifecycleManagedBy.ILM));
+        assertThat(DataStream.lifecycleManagedBy("policy", enabled, preferDlm), is(DataStream.LifecycleManagedBy.DLM));
+
+        // a disabled data stream lifecycle never manages the resource, so prefer_ilm is irrelevant
+        for (Settings settings : List.of(Settings.EMPTY, preferIlm, preferDlm)) {
+            assertThat(DataStream.lifecycleManagedBy("policy", disabled, settings), is(DataStream.LifecycleManagedBy.ILM));
+            assertThat(DataStream.lifecycleManagedBy(null, disabled, settings), is(DataStream.LifecycleManagedBy.UNMANAGED));
+        }
+
+        // only one feature configured, prefer_ilm is irrelevant
+        for (Settings settings : List.of(Settings.EMPTY, preferIlm, preferDlm)) {
+            assertThat(DataStream.lifecycleManagedBy("policy", null, settings), is(DataStream.LifecycleManagedBy.ILM));
+            assertThat(DataStream.lifecycleManagedBy(null, enabled, settings), is(DataStream.LifecycleManagedBy.DLM));
+            assertThat(DataStream.lifecycleManagedBy(null, null, settings), is(DataStream.LifecycleManagedBy.UNMANAGED));
         }
     }
 

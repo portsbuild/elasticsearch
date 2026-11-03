@@ -69,6 +69,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -863,7 +864,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         @Nullable DataStreamAutoShardingEvent autoShardingEvent
     ) {
         ensureNotReplicated();
-
+        ensureSafeMigrationToTimeSeries(indexModeFromTemplate);
         return unsafeRollover(writeIndex, generation, indexModeFromTemplate, autoShardingEvent);
     }
 
@@ -883,8 +884,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             );
         }
         if (dsIndexMode != indexModeFromTemplate) {
-            if (IndexMode.isTsdb(indexModeFromTemplate) && (dsIndexMode == IndexMode.LOGSDB || dsIndexMode == IndexMode.LOGSDB_COLUMNAR)) {
-                LOGGER.warn("Changing [{}] index mode from [{}] to [{}]", name, indexModeFromTemplate, dsIndexMode);
+            if (IndexMode.isTsdb(indexModeFromTemplate) && (dsIndexMode != null && dsIndexMode != IndexMode.STANDARD)) {
+                LOGGER.warn("Changing [{}] index mode from [{}] to [{}]", name, dsIndexMode, indexModeFromTemplate);
             }
             dsIndexMode = indexModeFromTemplate;
         }
@@ -946,6 +947,23 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     private void ensureNotReplicated() {
         if (replicated) {
             throw new IllegalArgumentException("data stream [" + name + "] cannot be rolled over, because it is a replicated data stream");
+        }
+    }
+
+    private void ensureSafeMigrationToTimeSeries(IndexMode indexModeFromTemplate) {
+        IndexMode dsIndexMode = this.indexMode == null ? IndexMode.STANDARD : this.indexMode;
+        if (IndexMode.isTsdb(indexModeFromTemplate) && IndexMode.isTsdb(dsIndexMode) == false && dsIndexMode != IndexMode.STANDARD) {
+            throw new IllegalArgumentException(
+                "data stream ["
+                    + name
+                    + "] cannot be rolled over, because migrating from ["
+                    + dsIndexMode.getName()
+                    + "] to ["
+                    + indexModeFromTemplate.getName()
+                    + "] is not supported, please first change the [index.mode] in the template to ["
+                    + IndexMode.STANDARD.getName()
+                    + "], roll over, and try again."
+            );
         }
     }
 
@@ -1415,12 +1433,46 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
      * access method.
      */
     private boolean isIndexManagedByDataStreamLifecycle(IndexMetadata indexMetadata) {
+        Settings settings = indexMetadata.getSettings();
         var lifecycle = getDataLifecycleForIndex(indexMetadata.getIndex());
-        if (indexMetadata.getLifecyclePolicyName() != null && lifecycle != null && lifecycle.enabled()) {
+        return lifecycleManagedBy(indexMetadata.getLifecyclePolicyName(), lifecycle, settings) == LifecycleManagedBy.DLM;
+    }
+
+    /**
+     * Resolves which lifecycle feature is managing the resources given the provided arguments.
+     * @param ilmPolicy the ILM policy name that is configured or null
+     * @param dataStreamLifecycle the lifecycle configuration or null
+     * @param preferIlmSupplier a supplier of the prefer_ilm value
+     * @return the enum denoting which feature is managing this resource.
+     */
+    public static LifecycleManagedBy lifecycleManagedBy(
+        String ilmPolicy,
+        DataStreamLifecycle dataStreamLifecycle,
+        BooleanSupplier preferIlmSupplier
+    ) {
+        boolean lifecycleEnabled = dataStreamLifecycle != null && dataStreamLifecycle.enabled();
+        if (ilmPolicy != null && lifecycleEnabled) {
             // when both ILM and data stream lifecycle are configured, choose depending on the configured preference for this backing index
-            return PREFER_ILM_SETTING.get(indexMetadata.getSettings()) == false;
+            return preferIlmSupplier.getAsBoolean() ? LifecycleManagedBy.ILM : LifecycleManagedBy.DLM;
         }
-        return lifecycle != null && lifecycle.enabled();
+        if (lifecycleEnabled) {
+            return LifecycleManagedBy.DLM;
+        }
+        if (ilmPolicy != null) {
+            return LifecycleManagedBy.ILM;
+        }
+        return LifecycleManagedBy.UNMANAGED;
+    }
+
+    /**
+     * Resolves which lifecycle feature is managing the resources given the provided arguments.
+     * @param ilmPolicy the ILM policy name that is configured or null
+     * @param dataStreamLifecycle the lifecycle configuration or null
+     * @param settings the settings in case we need to retrieve the prefer_ilm value
+     * @return the enum denoting which feature is managing this resource.
+     */
+    public static LifecycleManagedBy lifecycleManagedBy(String ilmPolicy, DataStreamLifecycle dataStreamLifecycle, Settings settings) {
+        return lifecycleManagedBy(ilmPolicy, dataStreamLifecycle, () -> PREFER_ILM_SETTING.get(settings));
     }
 
     /**
@@ -2253,6 +2305,12 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         BACKING_INDICES,
         FAILURE_INDICES,
         ALL
+    }
+
+    public enum LifecycleManagedBy {
+        ILM,
+        DLM,
+        UNMANAGED
     }
 
 }
