@@ -136,7 +136,7 @@ public class MrjarPlugin implements Plugin<Project> {
 
         // Override Java version when building on FreeBSD
         // Required Java compiler minimum is 21
-        if (System.getProperty("os.name").equals("FreeBSD") && Util.getBooleanProperty("freebsd.override.jdk", false)) {
+        if (System.getProperty("os.name").startsWith("FreeBSD") && Util.getBooleanProperty("freebsd.build.override-jdk", false)) {
             if (javaVersion != 21 && javaVersion != 25) {
                 // Project-level overrides
                 if (javaVersion == 22) {
