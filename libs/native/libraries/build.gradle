@@ -82,7 +82,7 @@ dependencies {
 def buildLibVec = tasks.register('buildLibVec', Exec) {
   workingDir = file('../../simdvec/native')
   var gradleCmd = './gradlew'
-  if (System.getProperty("freebsd.build.fromPorts") == null) {
+  if (Boolean.parseBoolean(System.getProperty("freebsd.build.fromPorts", "false")) == true) {
     gradleCmd = 'gradle'
   }
   commandLine gradleCmd, 'buildSharedLibrary'
