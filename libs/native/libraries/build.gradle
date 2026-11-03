@@ -107,19 +107,30 @@ def extractLibs = tasks.register('extractLibs', Copy) {
     it.path = it.path.replace("win32", "windows")
   }
   if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
-    from('/usr/local/lib') {
-      include 'libzstd.so'
-      into 'freebsd-x64'
+    if (Boolean.parseBoolean(System.getProperty("freebsd.build.fromPorts", "false")) == true) {
+      from('%%LOCALBASE%%/lib') {
+        include 'libzstd.so'
+        into 'freebsd-x64'
+      }
+    } else {
+      from('/usr/local/lib') {
+        include 'libzstd.so'
+        into 'freebsd-x64'
+      }
     }
-    dependsOn buildLibVec
-    from(file("../../simdvec/native/build/libs/vec/freebsd/amd64/")) {
-      include 'libvec.so'
-      into 'freebsd-x64'
+    if (Boolean.parseBoolean(System.getProperty("freebsd.build.libvec", "false")) == true) {
+      dependsOn buildLibVec
+      from(file("../../simdvec/native/build/libs/vec/freebsd/amd64/")) {
+        include 'libvec.so'
+        into 'freebsd-x64'
+      }
     }
-    dependsOn buildLibParquet
-    from(file("../../parquet-rs/native/build/libs/vec/freebsd/amd64/")) {
-      include 'libes_parquet_rs.so'
-      into 'freebsd-x64'
+    if (Boolean.parseBoolean(System.getProperty("freebsd.build.libparquet", "false")) == true) {
+      dependsOn buildLibParquet
+      from(file("../../parquet-rs/native/build/libs/vec/freebsd/amd64/")) {
+        include 'libes_parquet_rs.so'
+        into 'freebsd-x64'
+      }
     }
   }
   includeEmptyDirs = false
