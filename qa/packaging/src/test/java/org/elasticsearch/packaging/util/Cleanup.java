@@ -55,6 +55,23 @@ public class Cleanup {
         "/usr/local/etc/rc.d/elasticsearch"
     );
 
+    private static final List<String> ELASTICSEARCH_FILES_FREEBSD_PORTS = Arrays.asList(
+        "%%LOCALBASE%%/share/elasticsearch",
+        "%%LOCALBASE%%/etc/elasticsearch/elasticsearch.keystore",
+        "%%LOCALBASE%%/etc/elasticsearch",
+        "%%LOCALBASE%%/lib/elasticsearch",
+        "%%LOCALBASE%%/libexec/elasticsearch",
+        "/var/log/elasticsearch",
+        "/var/run/elasticsearch",
+        "/var/db/elasticsearch",
+        "%%LOCALBASE%%/share/doc/elasticsearch",
+        "%%LOCALBASE%%/etc/rc.d/elasticsearch"
+    );
+
+    private static final List<String> ELASTICSEARCH_FILES_FREEBSD_FINAL = Boolean.parseBoolean(
+        System.getProperty("freebsd.build.fromPorts", "false")
+    ) ? ELASTICSEARCH_FILES_FREEBSD_PORTS : ELASTICSEARCH_FILES_FREEBSD;
+
     // todo
     private static final List<String> ELASTICSEARCH_FILES_WINDOWS = Collections.emptyList();
 
@@ -99,7 +116,7 @@ public class Cleanup {
         lsGlob(getRootTempDir(), "elasticsearch*").forEach(FileUtils::rm);
         final List<String> filesToDelete = Platforms.WINDOWS
             ? ELASTICSEARCH_FILES_WINDOWS
-            : (Platforms.FREEBSD ? ELASTICSEARCH_FILES_FREEBSD : ELASTICSEARCH_FILES_LINUX);
+            : (Platforms.FREEBSD ? ELASTICSEARCH_FILES_FREEBSD_FINAL : ELASTICSEARCH_FILES_LINUX);
         filesToDelete.stream().map(Paths::get).filter(Files::exists).forEach(FileUtils::rm);
     }
 
