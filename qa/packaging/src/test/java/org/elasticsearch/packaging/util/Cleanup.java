@@ -56,16 +56,16 @@ public class Cleanup {
     );
 
     private static final List<String> ELASTICSEARCH_FILES_FREEBSD_PORTS = Arrays.asList(
-        "%%LOCALBASE%%/share/elasticsearch",
-        "%%LOCALBASE%%/etc/elasticsearch/elasticsearch.keystore",
-        "%%LOCALBASE%%/etc/elasticsearch",
-        "%%LOCALBASE%%/lib/elasticsearch",
-        "%%LOCALBASE%%/libexec/elasticsearch",
+        "%%DATADIR%%",
+        "%%ETCDIR%%/elasticsearch.keystore",
+        "%%ETCDIR%%",
+        "%%PREFIX%%/lib/elasticsearch",
+        "%%PREFIX%%/libexec/elasticsearch",
         "/var/log/elasticsearch",
         "/var/run/elasticsearch",
         "/var/db/elasticsearch",
-        "%%LOCALBASE%%/share/doc/elasticsearch",
-        "%%LOCALBASE%%/etc/rc.d/elasticsearch"
+        "%%DOCSDIR%%",
+        "%%PREFIX%%/etc/rc.d/elasticsearch"
     );
 
     private static final List<String> ELASTICSEARCH_FILES_FREEBSD_FINAL = Boolean.parseBoolean(
