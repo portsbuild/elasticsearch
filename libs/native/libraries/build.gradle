@@ -101,10 +101,16 @@ def extractLibs = tasks.register('extractLibs', Copy) {
     }
     if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
       into layout.buildDirectory.dir('platform')
-      // todo: replace /usr/local with %%LOCALBASE%% when patching
-      from('/usr/local/lib') {
-        include 'libzstd.so'
-        into 'freebsd-x64'
+      if (Boolean.parseBoolean(System.getProperty("freebsd.build.fromPorts", "false")) == true) {
+        from('%%LOCALBASE%%/lib') {
+          include 'libzstd.so'
+          into 'freebsd-x64'
+        }
+      } else {
+        from('/usr/local/lib') {
+          include 'libzstd.so'
+          into 'freebsd-x64'
+        }
       }
       if (Boolean.parseBoolean(System.getProperty("freebsd.build.libvec", "false")) == true) {
         from(buildLibVec) {
