@@ -3251,7 +3251,7 @@ public class StatementParserTests extends AbstractStatementParserTests {
     }
 
     public void testInvalidFromPatterns() {
-        // https://github.com/elastic/elasticsearch/pull/130458
+        // METRICS is a dev-version token. Release builds only parse FROM.
         var sourceCommands = Build.current().isSnapshot() ? new String[] { "FROM", "METRICS" } : new String[] { "FROM" };
         var indexIsBlank = "Blank index specified in index pattern";
         var remoteIsEmpty = "remote part is empty";

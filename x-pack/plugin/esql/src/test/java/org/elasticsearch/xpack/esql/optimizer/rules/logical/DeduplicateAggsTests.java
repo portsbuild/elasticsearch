@@ -582,9 +582,7 @@ public class DeduplicateAggsTests extends AbstractLogicalPlanOptimizerTests {
      * pe{f}#15]]
      */
     public void testDuplicatedInlineAggWithFoldableIdenticalExpressions() {
-        // https://github.com/elastic/elasticsearch/pull/140070/
-        assumeTrue("requires INLINESTATS command to be enabled", EsqlCapabilities.Cap.INLINESTATS.isEnabled());
-
+        assumeTrue("requires INLINE STATS", EsqlCapabilities.Cap.INLINESTATS.isEnabled());
         String query = """
                 FROM airports
                 | INLINESTATS a = 2*COUNT_DISTINCT(scalerank, 100),

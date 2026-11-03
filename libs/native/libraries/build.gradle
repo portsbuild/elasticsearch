@@ -81,25 +81,15 @@ dependencies {
 
 def buildLibVec = tasks.register('buildLibVec', Exec) {
   workingDir = file('../../simdvec/native')
-  commandLine './gradlew', 'buildSharedLibrary'
+  var gradleCmd = './gradlew'
+  if (Boolean.parseBoolean(System.getProperty("freebsd.build.fromPorts", "false")) == true) {
+    gradleCmd = 'gradle'
+  }
+  commandLine gradleCmd, 'buildSharedLibrary'
   outputs.dir(file("../../simdvec/native/build/libs/vec/shared/amd64/"))
 }
 
 def extractLibs = tasks.register('extractLibs', Copy) {
-  if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
-    into layout.buildDirectory.dir('platform')
-    from('/usr/local/lib') {
-      include 'libzstd.so'
-      into 'freebsd-x64'
-    }
-    from(buildLibVec) {
-      include 'libvec.so'
-      into 'freebsd-x64'
-    }
-    filePermissions {
-      unix("755")
-    }
-  } else {
     into layout.buildDirectory.dir('platform')
     from configurations.libs
     // TODO: fix architecture in uploaded libs
@@ -109,6 +99,26 @@ def extractLibs = tasks.register('extractLibs', Copy) {
     filesMatching("win32*/*") {
       it.path = it.path.replace("win32", "windows")
     }
+    if (System.getProperty("os.name", "").startsWith("FreeBSD")) {
+      into layout.buildDirectory.dir('platform')
+      if (Boolean.parseBoolean(System.getProperty("freebsd.build.fromPorts", "false")) == true) {
+        from('%%LOCALBASE%%/lib') {
+          include 'libzstd.so'
+          into 'freebsd-x64'
+        }
+      } else {
+        from('/usr/local/lib') {
+          include 'libzstd.so'
+          into 'freebsd-x64'
+        }
+      }
+      if (Boolean.parseBoolean(System.getProperty("freebsd.build.libvec", "false")) == true) {
+        from(buildLibVec) {
+          include 'libvec.so'
+          into 'freebsd-x64'
+        }
+      }
+    }
     includeEmptyDirs = false
     filePermissions {
       unix("644")
@@ -116,7 +126,6 @@ def extractLibs = tasks.register('extractLibs', Copy) {
     dirPermissions {
       unix("755")
     }
-  }
 }
 
 artifacts {
