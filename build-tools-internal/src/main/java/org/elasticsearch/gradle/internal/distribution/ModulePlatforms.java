@@ -26,7 +26,8 @@ public final class ModulePlatforms {
         "linux-aarch64",
         "windows-x86_64",
         "darwin-x86_64",
-        "darwin-aarch64"
+        "darwin-aarch64",
+        "freebsd-x86_64"
     );
 
     private ModulePlatforms() {}
