@@ -15,7 +15,15 @@ The following table lists the actively maintained releases on this repository. T
 
 ## Installation
 
-The recommended way to install Elasticsearch is by using the port makefile. Since this project's port is not included in the official FreeBSD package repositories or ports index, one can download the appropriate patch file posted on the [FreeBSD Bugzilla entry](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=288653) page.
+The recommended way to install Elasticsearch is by using the port makefile. As of November 3rd, 2026, the port is available in the official FreeBSD package repositories.
+
+```shell
+## New installs:
+pkg install elasticsearch8
+
+## Upgrades:
+pkg upgrade elasticsearch8
+```
 
 > [!WARNING]
 > If you are upgrading an existing Elasticsearch instance to version 9.x, you **MUST** upgrade to 8.19 first!
