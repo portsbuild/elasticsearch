@@ -127,7 +127,7 @@ def extractLibs = tasks.register('extractLibs', Copy) {
     }
     if (Boolean.parseBoolean(System.getProperty("freebsd.build.libparquet", "false")) == true) {
       dependsOn buildLibParquet
-      from(file("../../parquet-rs/native/build/libs/vec/freebsd/amd64/")) {
+      from(file("../../parquet-rs/native/target/release/")) {
         include 'libes_parquet_rs.so'
         into 'freebsd-x64'
       }
