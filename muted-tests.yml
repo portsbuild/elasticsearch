@@ -89,9 +89,6 @@ tests:
 - class: org.elasticsearch.xpack.transform.integration.TransformDestIndexIT
   method: testUnattendedTransformDestIndexCreatedDuringUpdate_EmptySourceIndex_NoDeferValidation
   issue: https://github.com/elastic/elasticsearch/issues/152599
-- class: org.elasticsearch.xpack.security.CoreWithSecurityClientYamlTestSuiteIT
-  method: test {yaml=search.highlight/30_max_analyzed_offset/Plain highlighter on a field WITH OFFSETS exceeding index.highlight.max_analyzed_offset should FAIL}
-  issue: https://github.com/elastic/elasticsearch/issues/158519
 - class: org.elasticsearch.compute.aggregation.SumDenseVectorGroupingAggregatorFunctionTests
   method: testManyInitialManyPartialFinalRunner
   issue: https://github.com/elastic/elasticsearch/issues/158614
@@ -144,30 +141,15 @@ tests:
 - class: org.elasticsearch.xpack.security.transport.netty4.SimpleSecurityNetty4ServerTransportTests
   method: testHandlerIsInvokedOnConnectionClose
   issue: https://github.com/elastic/elasticsearch/issues/160606
-- class: org.elasticsearch.xpack.shutdown.NodeShutdownShardSnapshotsIT
-  method: testShardSnapshotsStatus
-  issue: https://github.com/elastic/elasticsearch/issues/160607
-- class: org.elasticsearch.xpack.logsdb.qa.BulkDynamicMappingChallengeRestIT
-  method: testMatchAllQuery
-  issue: https://github.com/elastic/elasticsearch/issues/160608
 - class: org.elasticsearch.xpack.inference.services.nvidia.NvidiaServiceTests
   method: testUnifiedCompletionNonStreamingNotFoundError
   issue: https://github.com/elastic/elasticsearch/issues/160618
-- class: org.elasticsearch.xpack.logsdb.qa.BulkChallengeRestIT
-  method: testTermsAggregation
-  issue: https://github.com/elastic/elasticsearch/issues/160705
 - class: org.elasticsearch.xpack.searchablesnapshots.cache.blob.SearchableSnapshotsBlobStoreCacheMaintenanceIntegTests
   method: testCleanUpAfterIndicesAreDeleted
   issue: https://github.com/elastic/elasticsearch/issues/160715
 - class: org.elasticsearch.upgrades.UpgradeClusterClientYamlTestSuiteIT
   method: test {yaml=mixed_cluster/90_ml_data_frame_analytics_crud/Start and stop old outlier_detection job}
   issue: https://github.com/elastic/elasticsearch/issues/160950
-- class: org.elasticsearch.xpack.logsdb.qa.LogsDbVersusLogsDbReindexedIntoStandardModeChallengeRestIT
-  method: testRandomQueries
-  issue: https://github.com/elastic/elasticsearch/issues/161093
-- class: org.elasticsearch.xpack.logsdb.qa.StoredSourceLogsDbVersusReindexedLogsDbChallengeRestIT
-  method: testRandomQueries
-  issue: https://github.com/elastic/elasticsearch/issues/161094
 - class: org.elasticsearch.xpack.esql.expression.function.aggregate.WeightedAvgTests
   issue: https://github.com/elastic/elasticsearch/issues/161319
 - class: org.elasticsearch.index.engine.MergeWithLowDiskSpaceIT
@@ -211,21 +193,63 @@ tests:
   - :x-pack:plugin:downsample:test
   method: testDownsampleResumesAfterPersistentTaskRemoved
   issue: https://github.com/elastic/elasticsearch/issues/162858
-- class: org.elasticsearch.xpack.security.CoreWithSecurityClientYamlTestSuiteIT
+- class: org.elasticsearch.backwards.MixedClusterClientYamlTestSuiteIT
   tasks:
-  - :x-pack:qa:core-rest-tests-with-security:yamlRestTest
-  method: test {yaml=indices.get_field_mapping/20_missing_field/Return empty object if field doesn't exist, but index does}
-  issue: https://github.com/elastic/elasticsearch/issues/163303
+  - :qa:mixed-cluster:v8.19.24#mixedClusterTest
+  method: test {yaml=aggregations/terms/Unmapped dates}
+  issue: https://github.com/elastic/elasticsearch/issues/164021
 - class: org.elasticsearch.xpack.esql.qa.single_node.GenerativeMetricsIT
   tasks:
   - :x-pack:plugin:esql:qa:server:single-node:javaRestTest
   method: test
   issue: https://github.com/elastic/elasticsearch/issues/163488
-- class: org.elasticsearch.multiproject.test.CoreWithMultipleProjectsClientYamlTestSuiteIT
+- class: org.elasticsearch.xpack.inference.integration.AuthorizationTaskExecutorIT
   tasks:
-  - :x-pack:qa:multi-project:core-rest-tests-with-multiple-projects:yamlRestTest
-  method: test {yaml=data_stream/150_tsdb/multi value dimensions}
-  issue: https://github.com/elastic/elasticsearch/issues/163800
+  - :x-pack:plugin:inference:internalClusterTest
+  method: testDeletesRemovedEndpoints_GivenSingleEndpointIsRemoved
+  issue: https://github.com/elastic/elasticsearch/issues/164048
+- class: org.elasticsearch.xpack.restart.MLModelDeploymentFullClusterRestartIT
+  tasks:
+  - :x-pack:qa:full-cluster-restart:v8.3.3#bwcTest
+  method: testDeploymentSurvivesRestart {cluster=UPGRADED}
+  issue: https://github.com/elastic/elasticsearch/issues/151923
+- class: org.elasticsearch.xpack.sql.qa.security.JdbcSecurityIT
+  tasks:
+  - :x-pack:plugin:sql:qa:server:security:with-ssl:javaRestTest
+  issue: https://github.com/elastic/elasticsearch/issues/164747
+- class: org.elasticsearch.search.CCSDuelIT
+  tasks:
+  - :qa:multi-cluster-search:v9.4.10#multi-cluster
+  issue: https://github.com/elastic/elasticsearch/issues/165032
+- class: org.elasticsearch.indices.mapping.UpdateMappingIntegrationIT
+  tasks:
+  - :server:internalClusterTest
+  method: testDynamicUpdates
+  issue: https://github.com/elastic/elasticsearch/issues/161200
+- class: org.elasticsearch.xpack.transform.integration.TransformIT
+  tasks:
+  - :x-pack:plugin:transform:qa:multi-node-tests:javaRestTest
+  method: testTransformLifecycleInALoop
+  issue: https://github.com/elastic/elasticsearch/issues/155844
+- class: org.elasticsearch.search.MultiClusterSearchYamlTestSuiteIT
+  tasks:
+  - :qa:multi-cluster-search:v9.4.10#multi-cluster
+  issue: https://github.com/elastic/elasticsearch/issues/165287
+- class: org.elasticsearch.xpack.ccr.CcrAliasesIT
+  tasks:
+  - :x-pack:plugin:ccr:internalClusterTest
+  method: testStress
+  issue: https://github.com/elastic/elasticsearch/issues/163486
+- class: org.elasticsearch.xpack.ml.inference.adaptiveallocations.AdaptiveAllocationsScalerServiceTests
+  tasks:
+  - :x-pack:plugin:ml:test
+  method: test_scaleUp
+  issue: https://github.com/elastic/elasticsearch/issues/166070
+- class: org.elasticsearch.xpack.remotecluster.CrossClusterEsqlRCS1EnrichUnavailableRemotesIT
+  tasks:
+  - :x-pack:plugin:security:qa:multi-cluster:javaRestTest
+  method: testEsqlEnrichWithSkipUnavailable
+  issue: https://github.com/elastic/elasticsearch/issues/166601
 
 # Examples:
 #
