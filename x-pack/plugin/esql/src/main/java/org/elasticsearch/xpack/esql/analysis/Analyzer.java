@@ -57,6 +57,7 @@ import org.elasticsearch.xpack.esql.core.expression.UnresolvedAttribute;
 import org.elasticsearch.xpack.esql.core.expression.UnresolvedMetadataAttributeExpression;
 import org.elasticsearch.xpack.esql.core.expression.UnresolvedPattern;
 import org.elasticsearch.xpack.esql.core.expression.UnresolvedStar;
+import org.elasticsearch.xpack.esql.core.expression.UnresolvedTimestamp;
 import org.elasticsearch.xpack.esql.core.expression.UnsupportedAttribute;
 import org.elasticsearch.xpack.esql.core.expression.VirtualAttribute;
 import org.elasticsearch.xpack.esql.core.expression.predicate.BinaryOperator;
@@ -103,6 +104,7 @@ import org.elasticsearch.xpack.esql.expression.function.aggregate.Sum;
 import org.elasticsearch.xpack.esql.expression.function.aggregate.SumOverTime;
 import org.elasticsearch.xpack.esql.expression.function.aggregate.SummationMode;
 import org.elasticsearch.xpack.esql.expression.function.aggregate.TimeSeriesAggregateFunction;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.UnaryAggregateFunction;
 import org.elasticsearch.xpack.esql.expression.function.aggregate.Values;
 import org.elasticsearch.xpack.esql.expression.function.grouping.GroupingFunction;
 import org.elasticsearch.xpack.esql.expression.function.grouping.TimeSeriesWithout;
@@ -1366,7 +1368,11 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                     if (i < aggsIndexLimit) { // Skip resolving references to groupings in the aggs if no groupings are resolved yet.
                         maybeResolvedAgg = (NamedExpression) maybeResolvedAgg.transformUp(UnresolvedAttribute.class, ua -> {
                             Expression ne = ua;
-                            Attribute maybeResolved = maybeResolveAttribute(ua, resolvedList);
+                            // The implicit @timestamp of an aggregation is the @timestamp of the rows it aggregates. A grouping
+                            // named @timestamp must not shadow it, unlike an explicit reference to @timestamp.
+                            Attribute maybeResolved = ua instanceof UnresolvedTimestamp
+                                ? maybeResolveAttribute(ua, childrenOutput)
+                                : maybeResolveAttribute(ua, resolvedList);
                             // An item in aggregations can reference to groupings explicitly, if groupings are not resolved yet and
                             // maybeResolved is not resolved, return the original UnresolvedAttribute, so that it has another chance
                             // to get resolved in the next iteration.
@@ -1873,14 +1879,7 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                     || (subPlanColumns.equals(forkColumns) == false
                         && subqueryReferencingIndexWithEmptyMapping(fork, logicalPlan, forkColumns) == false)) {
                     changed = true;
-                    List<Attribute> newOutput = new ArrayList<>();
-                    for (String attrName : forkColumns) {
-                        for (Attribute subAttr : logicalPlan.output()) {
-                            if (attrName.equals(subAttr.name())) {
-                                newOutput.add(subAttr);
-                            }
-                        }
-                    }
+                    List<Attribute> newOutput = alignToMergeColumns(forkColumns, logicalPlan.output());
                     if (forkColumns.isEmpty()) {
                         // When forkColumns is empty (all branches only have no-fields), resolveKeep with empty
                         // projections would resolve to all child output including no-fields. Create a Project with
@@ -1907,6 +1906,28 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
             }
 
             return fork.replaceSubPlansAndOutput(newSubPlans, toReferenceAttributesPreservingIds(outputUnion, fork.output()));
+        }
+
+        /**
+         * Picks the attributes of a merge branch's output in {@code mergeColumns} order. The branch output is indexed by name once
+         * so the cost is linear in the schema width: a merge over thousands of columns would otherwise rescan the branch output for
+         * every merge column, saturating the analysis thread pool (#163560). A plan's output never repeats a name, so each merge
+         * column matches at most one branch attribute.
+         */
+        static List<Attribute> alignToMergeColumns(List<String> mergeColumns, List<Attribute> branchOutput) {
+            Map<String, Attribute> branchAttributesByName = HashMap.newHashMap(branchOutput.size());
+            for (Attribute attr : branchOutput) {
+                Attribute previous = branchAttributesByName.put(attr.name(), attr);
+                assert previous == null : "duplicate attribute name [" + attr.name() + "] in merge branch output " + branchOutput;
+            }
+            List<Attribute> aligned = new ArrayList<>(mergeColumns.size());
+            for (String name : mergeColumns) {
+                Attribute match = branchAttributesByName.get(name);
+                if (match != null) {
+                    aligned.add(match);
+                }
+            }
+            return aligned;
         }
 
         /*
@@ -3923,11 +3944,19 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
             Map<String, FieldAttribute> unionFields = new HashMap<>();
             Holder<Boolean> aborted = new Holder<>(Boolean.FALSE);
             var newPlan = plan.transformExpressionsOnly(AggregateFunction.class, aggFunc -> {
+                Expression field;
+                if (aggFunc instanceof UnaryAggregateFunction uaf) {
+                    field = uaf.field();
+                } else if (aggFunc instanceof TimeSeriesAggregateFunction tsaf) {
+                    field = tsaf.field();
+                } else {
+                    return aggFunc;
+                }
                 Expression child;
-                if (aggFunc.field() instanceof ToAggregateMetricDouble toAMD) {
+                if (field instanceof ToAggregateMetricDouble toAMD) {
                     child = tryToTransformFunction(aggFunc, toAMD.field(), aborted, unionFields, context);
                 } else {
-                    child = tryToTransformFunction(aggFunc, aggFunc.field(), aborted, unionFields, context);
+                    child = tryToTransformFunction(aggFunc, field, aborted, unionFields, context);
                 }
                 return child;
             }).transformExpressionsOnly(EsqlBinaryComparison.class, comparison -> {
@@ -4020,8 +4049,8 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                 if (aggFunc instanceof AvgOverTime avgOT) {
                     return new Div(
                         aggFunc.source(),
-                        new SumOverTime(aggFunc.source(), field, aggFunc.filter(), aggFunc.window(), avgOT.timestamp()),
-                        new CountOverTime(aggFunc.source(), field, aggFunc.filter(), aggFunc.window(), avgOT.timestamp())
+                        new SumOverTime(aggFunc.source(), field, avgOT.timestamp(), aggFunc.filter(), aggFunc.window()),
+                        new CountOverTime(aggFunc.source(), field, avgOT.timestamp(), aggFunc.filter(), aggFunc.window())
                     );
                 }
 
@@ -4046,7 +4075,7 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                     return new Sum(aggFunc.source(), children.getFirst());
                 }
                 if (aggFunc instanceof CountOverTime cot) {
-                    return new SumOverTime(aggFunc.source(), children.getFirst(), aggFunc.filter(), aggFunc.window(), cot.timestamp());
+                    return new SumOverTime(aggFunc.source(), children.getFirst(), cot.timestamp(), aggFunc.filter(), aggFunc.window());
                 }
                 return aggFunc.replaceChildren(children);
             }
@@ -4170,10 +4199,18 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
             plan.forEachUp(EsRelation.class, esRelation -> { indexMode.set(esRelation.indexMode()); });
             final boolean isTimeSeries = indexMode.get().isTsdb();
             return plan.transformExpressionsOnly(AggregateFunction.class, aggFunc -> {
+                Expression field;
+                if (aggFunc instanceof UnaryAggregateFunction uaf) {
+                    field = uaf.field();
+                } else if (aggFunc instanceof TimeSeriesAggregateFunction tsaf) {
+                    field = tsaf.field();
+                } else {
+                    return aggFunc;
+                }
                 if (ImplicitCastAggregateMetricDoubles.hasNativeSupport(aggFunc, isTimeSeries)) {
                     return aggFunc;
                 }
-                if (aggFunc.field() instanceof FieldAttribute fa && fa.field().getDataType() == AGGREGATE_METRIC_DOUBLE) {
+                if (field instanceof FieldAttribute fa && fa.field().getDataType() == AGGREGATE_METRIC_DOUBLE) {
                     Expression newField = FromAggregateMetricDouble.withMetric(
                         fa.source(),
                         fa,

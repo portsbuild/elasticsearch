@@ -54,6 +54,7 @@ import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownConjunctions
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownEnrich;
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownEval;
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownFilterAndLimitIntoUnionAll;
+import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownFilterIntoInlineJoinAggregate;
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownFiltersIntoFork;
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownInferencePlan;
 import org.elasticsearch.xpack.esql.optimizer.rules.logical.PushDownJoinPastProject;
@@ -122,6 +123,7 @@ public class LogicalPlanOptimizer extends ParameterizedRuleExecutor<LogicalPlan,
     private static final List<RuleExecutor.Batch<LogicalPlan>> RULES = List.of(
         substitutions(),
         operators(),
+        new Batch<>("Push Filters Into Inline Stats", Limiter.ONCE, new PushDownFilterIntoInlineJoinAggregate()),
         new Batch<>("Skip Compute", new SkipQueryOnLimitZero()),
         cleanup(),
         warnings(),
@@ -165,7 +167,7 @@ public class LogicalPlanOptimizer extends ParameterizedRuleExecutor<LogicalPlan,
             // SUM(field + c) into a pre-agg EVAL and hides the pattern from this rule.
             new RewriteSumOfExpressionPlusConstant(),
             // first extract nested expressions inside aggs
-            new ReplaceAggregateNestedExpressionWithEval(),
+            new ReplaceAggregateNestedExpressionWithEval(false, false),
             // then extract nested aggs top-level
             new ReplaceAggregateAggExpressionWithEval(),
             // lastly replace surrogate functions
@@ -173,7 +175,7 @@ public class LogicalPlanOptimizer extends ParameterizedRuleExecutor<LogicalPlan,
             // re-executing the next two rules is a relic of when time series aggregates were translated after surrogate substitution
             // removing this would fail in ccs scenarios where the remote cluster is on an older version (caught by bwc tests)
             new SubstituteSurrogateAggregations(),
-            new ReplaceAggregateNestedExpressionWithEval(),
+            new ReplaceAggregateNestedExpressionWithEval(false, true),
             // this one needs to be placed before ReplaceAliasingEvalWithProject, so that any potential aliasing eval (eval x = y)
             // is not replaced with a Project before the eval to be copied on the left hand side of an InlineJoin
             new PropagateInlineEvals(),

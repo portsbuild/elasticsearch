@@ -62,7 +62,10 @@ public abstract class DenseVectorQuery extends Query {
 
     @Override
     public void visit(QueryVisitor queryVisitor) {
-        queryVisitor.visitLeaf(this);
+        if (queryVisitor.acceptField(field)) {
+            // The sub-visitor's parent lets visitors check if the query is filtered
+            queryVisitor.getSubVisitor(BooleanClause.Occur.MUST, this).visitLeaf(this);
+        }
     }
 
     @Override
@@ -77,13 +80,26 @@ public abstract class DenseVectorQuery extends Query {
         }
     }
 
+    public Query getFilter() {
+        return filter;
+    }
+
+    /**
+     * Indicates if weight is cacheable given the query. Doc values require a careful override due to them being updatable.
+     */
+    boolean isCacheable(LeafReaderContext leafReaderContext) {
+        return true;
+    }
+
     abstract static class DenseVectorWeight extends Weight {
+        private final DenseVectorQuery query;
         private final String field;
         private final float boost;
         private final Weight filterWeight;
 
         protected DenseVectorWeight(DenseVectorQuery query, float boost, Weight filterWeight) {
             super(query);
+            this.query = query;
             this.field = query.field;
             this.boost = boost;
             this.filterWeight = filterWeight;
@@ -151,7 +167,7 @@ public abstract class DenseVectorQuery extends Query {
 
         @Override
         public boolean isCacheable(LeafReaderContext leafReaderContext) {
-            return true;
+            return query.isCacheable(leafReaderContext) && (filterWeight == null || filterWeight.isCacheable(leafReaderContext));
         }
     }
 
@@ -286,15 +302,18 @@ public abstract class DenseVectorQuery extends Query {
     static class DenseVectorScorer extends Scorer {
 
         private final VectorScorer vectorScorer;
-        private final VectorScorer.Bulk bulkScorer;
+        private final DocIdSetIterator filterIterator;
+        // LUCENE WORKAROUND (apache/lucene#16377): the default VectorScorer#bulk advances the iterator eagerly, which breaks
+        // conjunctions, so initialize lazily. Remove once Lucene 11.0.0 is adopted.
+        private VectorScorer.Bulk bulkScorer;
         private final DocIdSetIterator iterator;
         private final float boost;
 
-        DenseVectorScorer(VectorScorer vectorScorer, DocIdSetIterator filterIterator, float boost) throws IOException {
+        DenseVectorScorer(VectorScorer vectorScorer, DocIdSetIterator filterIterator, float boost) {
             this.vectorScorer = vectorScorer;
+            this.filterIterator = filterIterator;
             // The bulkScorer does not give us access to its internal iterator, so we build our own conjunction here
             // that is mainly used for advancing and retrieving docID.
-            this.bulkScorer = vectorScorer.bulk(filterIterator);
             this.iterator = filterIterator == null
                 ? vectorScorer.iterator()
                 : ConjunctionUtils.intersectIterators(List.of(vectorScorer.iterator(), filterIterator));
@@ -325,6 +344,9 @@ public abstract class DenseVectorQuery extends Query {
 
         @Override
         public void nextDocsAndScores(int upTo, Bits liveDocs, DocAndFloatFeatureBuffer buffer) throws IOException {
+            if (bulkScorer == null) {
+                bulkScorer = vectorScorer.bulk(filterIterator);
+            }
             bulkScorer.nextDocsAndScores(upTo, liveDocs, buffer);
             for (int i = 0; i < buffer.size; i++) {
                 buffer.features[i] *= boost;

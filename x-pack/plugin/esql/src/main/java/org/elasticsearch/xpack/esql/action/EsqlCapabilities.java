@@ -1593,6 +1593,14 @@ public class EsqlCapabilities {
         FIX_TS_MIXED_WITH_NON_TS_SOURCES,
 
         /**
+         * Wildcard patterns in {@code TS} commands silently skip matching views — the relation is
+         * returned unchanged so field-caps' {@code _index_mode:time_series} filter excludes them
+         * naturally. Concrete view names in {@code TS} patterns are still rejected with a
+         * {@code VerificationException}.
+         */
+        TS_COMMAND_WILDCARDS_SKIP_VIEWS,
+
+        /**
          * Support for the {@code leading_zeros} named parameter.
          */
         TO_IP_LEADING_ZEROS,
@@ -1664,6 +1672,15 @@ public class EsqlCapabilities {
          */
         INCREASE,
         DELTA_TS_AGG,
+
+        /**
+         * Fix {@code delta}/{@code idelta}/{@code rate}/{@code irate}/{@code increase} with a window shorter than
+         * the time bucket. Previously, the optimizer could replace the {@code Bucket} child of {@code WindowFilter}
+         * with an {@code Attribute}, causing a {@code ClassCastException} in {@code toEvaluator()}. The fix removes
+         * {@code bucket} from the children list so it is invisible to optimizer rewrites.
+         */
+        FIX_WINDOW_FILTER_BUCKET_CHILD,
+
         CLAMP_FUNCTIONS,
 
         /**
@@ -2169,6 +2186,8 @@ public class EsqlCapabilities {
          * Pack dimension values in TS command
          */
         PACK_DIMENSIONS_IN_TS,
+
+        PACK_DOUBLE_FLOAT_DIMENSIONS,
 
         /**
          * Support for exponential_histogram fields in the state of when it first was released into tech preview.
@@ -3679,6 +3698,73 @@ public class EsqlCapabilities {
          * See: <a href="https://github.com/elastic/elasticsearch/issues/155101">#155101</a>
          */
         FIX_INFER_IS_NOT_NULL_ALLOWLIST,
+
+        /**
+         * Materialize more aggregate inputs into a synthetic pre-agg eval.
+         * This covers two cases that previously failed, namely expressions in an aggregate
+         * parameter (e.g. {@code TOP(field, 1, "asc", CONCAT("first", " ", "last")}), and
+         * constant fields for aggregates that don't special-case them (e.g. {@code TOP(42, 2, "ASC")}).
+         * See <a href="https://github.com/elastic/elasticsearch/issues/158467">#158467</a>
+         * and <a href="https://github.com/elastic/elasticsearch/issues/158659">#158659</a>.
+         */
+        AGGS_MORE_INPUTS_VIA_EVAL,
+
+        /**
+         * Bugfixes for edge cases of aggregation functions with multiple input fields. See:
+         * <a href="https://github.com/elastic/elasticsearch/issues/158821">#158821</a>,
+         * <a href="https://github.com/elastic/elasticsearch/issues/158827">#158827</a>,
+         * <a href="https://github.com/elastic/elasticsearch/issues/158918">#158918</a>,
+         * <a href="https://github.com/elastic/elasticsearch/issues/159029">#159029</a>,
+         * <a href="https://github.com/elastic/elasticsearch/issues/159033">#159033</a>.
+         */
+        FIX_AGGS_MULTIPLE_INPUT_FIELDS,
+
+        /**
+         * Simplify / fix null folding
+         */
+        FIX_FOLD_NULL,
+
+        /**
+         * Folding a function that returns {@code null} if any argument is {@code null} no longer fails when an
+         * argument is a constant expression folding to {@code null}, like {@code CASE} without a match, {@code 1/0}
+         * or a typed {@code null}. See <a href="https://github.com/elastic/elasticsearch/issues/162639">#162639</a>.
+         */
+        FIX_FOLD_NULL_ARGUMENTS,
+
+        /**
+         * The implicit {@code @timestamp} of an aggregation, e.g. in {@code rate()} or {@code latest()}, resolves to the
+         * {@code @timestamp} of the {@code STATS} input, even when a grouping of the same {@code STATS} is named
+         * {@code @timestamp}. Before, {@code STATS rate(x) BY @timestamp = TBUCKET(1 minute)} read the time bucket as the
+         * sample timestamp and returned wrong values that changed between runs.
+         * See: <a href="https://github.com/elastic/elasticsearch/issues/164599">#164599</a>
+         */
+        FIX_IMPLICIT_TIMESTAMP_SHADOWED_BY_GROUPING,
+
+        /**
+         * Fixes a bug in the planner where {@code TS} queries failed with an {@link IllegalStateException} when an aggregation
+         * with a filter combined several aggregate functions, such as {@code max(...) - min(...) WHERE ...}.
+         */
+        FIX_TS_FILTER_ON_EXPRESSION_OF_AGGREGATES,
+
+        /**
+         * Fixes a bug in the planner where {@code TS} queries grouping by {@code _tsid}, such as
+         * {@code TS k8s METADATA _tsid | STATS BY _tsid}, failed with an {@link IllegalStateException}.
+         */
+        FIX_TS_STATS_BY_TSID,
+
+        /**
+         * A {@code FORK} between the {@code TS} source and the first aggregation is rejected with a clear error. Before, the
+         * {@code STATS} failed in the planner with "optimized incorrectly due to missing references [_tsid]".
+         * See <a href="https://github.com/elastic/elasticsearch/issues/160269">#160269</a>.
+         */
+        TS_FORK_BEFORE_STATS_NOT_SUPPORTED,
+
+        /**
+         * Fixes a bug in the planner where aggregations over columns produced by earlier {@code STATS}, {@code INLINE STATS},
+         * {@code TS_COLLAPSE} or {@code RERANK}, such as {@code MIN(a), MIN(b)} with {@code a} and {@code b} both computed as
+         * {@code COUNT(*)} over different rows, were deduplicated and returned the value of one aggregation for both.
+         */
+        FIX_DEDUPLICATE_AGGS_OVER_AGGREGATE_OUTPUTS,
 
         // Last capability should still have a comma for fewer merge conflicts when adding new ones :)
         // This comment prevents the semicolon from being on the previous capability when Spotless formats the file.
