@@ -49,7 +49,6 @@ import org.elasticsearch.xpack.esql.type.EsqlDataTypeConverter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -309,7 +308,7 @@ public class In extends EsqlScalarFunction implements TranslationAware.SingleVal
     protected Expression canonicalize() {
         // order values for commutative operators
         List<Expression> canonicalValues = Expressions.canonicalize(list);
-        Collections.sort(canonicalValues, (l, r) -> Integer.compare(l.hashCode(), r.hashCode()));
+        canonicalValues.sort(Expressions::compareStable);
         return new In(source(), value, canonicalValues);
     }
 
@@ -509,7 +508,13 @@ public class In extends EsqlScalarFunction implements TranslationAware.SingleVal
             return Translatable.NO;
         }
         if (pushdownPredicates.isPushableAttribute(value)) {
-            return Translatable.YES;
+            // When null is in the list, any non-matching row evaluates to null (not false) under
+            // three-valued logic. translate() drops null list entries before building the terms query,
+            // which is still correct for the positive IN direction: matching rows are included (true)
+            // and non-matching rows are excluded (null acts like false in a filter).
+            // However, negating the terms query for NOT IN would incorrectly include non-matching
+            // rows that three-valued logic says should be null (and therefore excluded).
+            return list().stream().anyMatch(Expressions::isGuaranteedNull) ? Translatable.YES_BUT_RECHECK_NEGATED : Translatable.YES;
         }
         if (value instanceof FieldExtract fe && fe.tryAsKeyedSubfieldName(pushdownPredicates).isPresent()) {
             // Candidate terms query against the keyed sub-field; RECHECK keeps the predicate in the

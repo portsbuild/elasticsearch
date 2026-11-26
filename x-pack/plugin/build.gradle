@@ -162,6 +162,10 @@ tasks.named("yamlRestCompatTestTransform").configure(
     task.skipTest("ml/jobs_get_stats/Test get job stats for closed job", "Flush API is deprecated")
     task.skipTest("ml/jobs_get_stats/Test reading v54 data counts and model size stats", "Version 5.4 support removed")
     task.skipTest("ml/inference_crud/Test deprecation of include model definition param", "Query parameter removed")
+    task.skipTest(
+      "ml/datafeeds_crud/Test put and update datafeed with max_consecutive_extraction_failures",
+      "-1 now resets max_consecutive_extraction_failures to its default and clears the field, where the older branch's test expects -1 back"
+    )
     task.skipTest("ml/post_data/Test flush and close job WITHOUT sending any data", "Flush API is deprecated")
     task.skipTest("ml/post_data/Test flush with skip_time", "Flush API is deprecated")
     task.skipTest("ml/post_data/Test POST data job api, flush, close and verify DataCounts doc", "Flush API is deprecated")
@@ -216,6 +220,11 @@ tasks.named("yamlRestCompatTestTransform").configure(
     )
     task.skipTest("esql/180_match_operator/match on eval column", "Match works now with non-mapped columns")
     task.skipTest("esql/180_match_operator/match on overwritten column", "Match works now with non-mapped columns")
+    task.skipTest("deprecation/10_basic/Test Deprecations", "node_settings depends on the JVM version, see NodeSettingsDeprecationIT")
+    task.skipTest(
+      "data_streams/10_data_stream_resolvability/Verify data stream resolvability in migrations API",
+      "node_settings depends on the JVM version, see NodeSettingsDeprecationIT"
+    )
     // Expected deprecation warning to compat yaml tests:
     task.addAllowedWarningRegex("Legacy monitoring API _monitoring/bulk is deprecated for removal in Elasticsearch 10\\.0\\.")
   }
